@@ -1,5 +1,15 @@
 from django.apps import AppConfig
 
+from organizations.conf import apply_setting_defaults
+
+# Runs while Django is building the app registry, which imports this module
+# before it imports any ``models`` module. That ordering is the point:
+# ``Organization`` and ``OrganizationMembership`` read ``ORGANIZATION_MODEL`` and
+# ``ORGANIZATION_MEMBERSHIP_MODEL`` at class-definition time, and so does every
+# migration that points a foreign key at them, so the settings have to exist by
+# then even on a project that never mentioned them.
+apply_setting_defaults()
+
 
 class OrganizationsConfig(AppConfig):
     name = 'organizations'

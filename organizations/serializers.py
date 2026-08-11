@@ -6,13 +6,18 @@ from django.db import transaction
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
+from organizations.conf import get_organization_model
 from organizations.helpers.organizations import create_organization, get_current_organization, update_organization
 from organizations.models import Organization, OrganizationSite
 
 
 class OrganizationSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Organization
+        # Resolved rather than imported, so a project that swapped
+        # ``ORGANIZATION_MODEL`` serializes its own model. Only the two fields
+        # the abstract base guarantees are listed -- a project with extra ones
+        # points ``SERIALIZERS['ORGANIZATION_SERIALIZER']`` at its own class.
+        model = get_organization_model()
         fields = ['name', 'slug']
 
     def create(self, validated_data: dict[str, Any]) -> Organization:

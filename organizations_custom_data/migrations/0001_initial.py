@@ -16,6 +16,8 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
+
+        migrations.swappable_dependency(settings.ORGANIZATION_MODEL),
         ('contenttypes', '0002_remove_content_type_name'),
         ('organizations', '0001_initial'),
         ('auth', '0008_alter_user_username_max_length'),
@@ -75,7 +77,7 @@ class Migration(migrations.Migration):
                 ('table_content_type', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE, to='contenttypes.ContentType')),
                 ('organization', models.ForeignKey(default=organizations.mixins.get_default_organization,
-                 on_delete=django.db.models.deletion.CASCADE, to='organizations.Organization')),
+                 on_delete=django.db.models.deletion.CASCADE, to=settings.ORGANIZATION_MODEL)),
             ],
         ),
         migrations.CreateModel(
@@ -88,7 +90,7 @@ class Migration(migrations.Migration):
                  to='organizations_custom_data.OrganizationSpecificFieldDefinition')),
                 ('row_content_type', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='contenttypes.ContentType')),
                 ('organization', models.ForeignKey(default=organizations.mixins.get_default_organization,
-                 on_delete=django.db.models.deletion.CASCADE, to='organizations.Organization')),
+                 on_delete=django.db.models.deletion.CASCADE, to=settings.ORGANIZATION_MODEL)),
             ],
             options={
                 'abstract': False,
@@ -106,7 +108,7 @@ class Migration(migrations.Migration):
                  to='organizations_custom_data.OrganizationSpecificFieldDefinition')),
                 ('row_content_type', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='contenttypes.ContentType')),
                 ('organization', models.ForeignKey(default=organizations.mixins.get_default_organization,
-                 on_delete=django.db.models.deletion.CASCADE, to='organizations.Organization')),
+                 on_delete=django.db.models.deletion.CASCADE, to=settings.ORGANIZATION_MODEL)),
             ],
             options={
                 'abstract': False,
@@ -120,7 +122,7 @@ class Migration(migrations.Migration):
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('module_path', models.CharField(max_length=255)),
                 ('organizations', models.ManyToManyField(
-                    related_name='validators_available', to='organizations.Organization')),
+                    related_name='validators_available', to=settings.ORGANIZATION_MODEL)),
             ],
             options={
                 'abstract': False,
@@ -138,7 +140,7 @@ class Migration(migrations.Migration):
                  to='organizations_custom_data.OrganizationSpecificFieldDefinition')),
                 ('row_content_type', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='contenttypes.ContentType')),
                 ('organization', models.ForeignKey(default=organizations.mixins.get_default_organization,
-                 on_delete=django.db.models.deletion.CASCADE, to='organizations.Organization')),
+                 on_delete=django.db.models.deletion.CASCADE, to=settings.ORGANIZATION_MODEL)),
             ],
             options={
                 'abstract': False,
@@ -152,7 +154,7 @@ class Migration(migrations.Migration):
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('name', models.CharField(max_length=255)),
                 ('organization', models.ForeignKey(default=organizations.mixins.get_default_organization,
-                 on_delete=django.db.models.deletion.CASCADE, to='organizations.Organization')),
+                 on_delete=django.db.models.deletion.CASCADE, to=settings.ORGANIZATION_MODEL)),
             ],
         ),
         migrations.CreateModel(
@@ -166,7 +168,7 @@ class Migration(migrations.Migration):
                 ('table', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='rows',
                  to='organizations_custom_data.OrganizationSpecificTable')),
                 ('organization', models.ForeignKey(default=organizations.mixins.get_default_organization,
-                 on_delete=django.db.models.deletion.CASCADE, to='organizations.Organization')),
+                 on_delete=django.db.models.deletion.CASCADE, to=settings.ORGANIZATION_MODEL)),
             ],
             options={
                 'base_manager_name': 'original_manager',
@@ -193,7 +195,7 @@ class Migration(migrations.Migration):
                 ('table', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE,
                  to='organizations_custom_data.OrganizationSpecificTable')),
                 ('organization', models.ForeignKey(default=organizations.mixins.get_default_organization,
-                 on_delete=django.db.models.deletion.CASCADE, to='organizations.Organization')),
+                 on_delete=django.db.models.deletion.CASCADE, to=settings.ORGANIZATION_MODEL)),
             ],
             options={
                 'abstract': False,
@@ -210,7 +212,7 @@ class Migration(migrations.Migration):
                 ('permissions', models.ManyToManyField(related_name='relationships',
                  to='organizations_custom_data.OrganizationSpecificTablesPermission')),
                 ('organization', models.ForeignKey(default=organizations.mixins.get_default_organization,
-                 on_delete=django.db.models.deletion.CASCADE, to='organizations.Organization')),
+                 on_delete=django.db.models.deletion.CASCADE, to=settings.ORGANIZATION_MODEL)),
                 ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to=settings.AUTH_USER_MODEL)),
             ],
             options={
@@ -229,7 +231,7 @@ class Migration(migrations.Migration):
             model_name='organizationspecifictablesgroup',
             name='organization',
             field=models.ForeignKey(default=organizations.mixins.get_default_organization,
-                                    on_delete=django.db.models.deletion.CASCADE, to='organizations.Organization'),
+                                    on_delete=django.db.models.deletion.CASCADE, to=settings.ORGANIZATION_MODEL),
         ),
         migrations.AddField(
             model_name='organizationspecificfielddefinition',
@@ -252,7 +254,7 @@ class Migration(migrations.Migration):
             model_name='organizationspecificfielddatetimepivot',
             name='organization',
             field=models.ForeignKey(default=organizations.mixins.get_default_organization,
-                                    on_delete=django.db.models.deletion.CASCADE, to='organizations.Organization'),
+                                    on_delete=django.db.models.deletion.CASCADE, to=settings.ORGANIZATION_MODEL),
         ),
         migrations.AddField(
             model_name='organizationspecificfielddatepivot',
@@ -269,7 +271,7 @@ class Migration(migrations.Migration):
             model_name='organizationspecificfielddatepivot',
             name='organization',
             field=models.ForeignKey(default=organizations.mixins.get_default_organization,
-                                    on_delete=django.db.models.deletion.CASCADE, to='organizations.Organization'),
+                                    on_delete=django.db.models.deletion.CASCADE, to=settings.ORGANIZATION_MODEL),
         ),
         migrations.AddField(
             model_name='organizationspecificfieldcharpivot',
@@ -286,7 +288,7 @@ class Migration(migrations.Migration):
             model_name='organizationspecificfieldcharpivot',
             name='organization',
             field=models.ForeignKey(default=organizations.mixins.get_default_organization,
-                                    on_delete=django.db.models.deletion.CASCADE, to='organizations.Organization'),
+                                    on_delete=django.db.models.deletion.CASCADE, to=settings.ORGANIZATION_MODEL),
         ),
         migrations.AlterUniqueTogether(
             name='organizationspecifictablesgroup',

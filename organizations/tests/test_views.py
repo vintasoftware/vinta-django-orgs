@@ -1,14 +1,26 @@
-#!/usr/bin/env python
+from typing import TYPE_CHECKING
 
+#!/usr/bin/env python
 from django.contrib.auth.models import User
 from django.urls import reverse
 from model_bakery import baker
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from organizations.conf import get_organization_model
 from organizations.helpers.memberships import create_membership
 from organizations.helpers.organizations import create_default_organization_groups, set_current_organization
-from organizations.models import Organization, OrganizationSite
+from organizations.models import OrganizationSite
+
+# Resolved at runtime, so this module exercises whichever model
+# ``ORGANIZATION_MODEL`` names -- the concrete one by default, the test project's
+# own under ``tests.settings_swapped``. Type checking always runs against the
+# default settings module, so it is shown the concrete model and every lookup
+# below keeps the precise type it had.
+if TYPE_CHECKING:
+    from organizations.models import Organization
+else:
+    Organization = get_organization_model()
 
 
 class OrganizationListViewTests(APITestCase):

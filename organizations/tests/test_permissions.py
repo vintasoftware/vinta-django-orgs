@@ -1,3 +1,4 @@
+from typing import TYPE_CHECKING
 from unittest import mock
 
 from django.test import RequestFactory
@@ -6,14 +7,24 @@ from model_bakery import baker
 from rest_framework.request import Request
 from rest_framework.views import APIView
 
+from organizations.conf import get_organization_model
 from organizations.helpers.organizations import (
     clear_current_organization,
     create_organization,
     set_current_organization,
 )
-from organizations.models import Organization
 from organizations.permissions import DjangoOrganizationModelPermissions, IsOrganizationOwner
 from tests.utils import OrganizationsTestCase
+
+# Resolved at runtime, so this module exercises whichever model
+# ``ORGANIZATION_MODEL`` names -- the concrete one by default, the test project's
+# own under ``tests.settings_swapped``. Type checking always runs against the
+# default settings module, so it is shown the concrete model and every lookup
+# below keeps the precise type it had.
+if TYPE_CHECKING:
+    from organizations.models import Organization
+else:
+    Organization = get_organization_model()
 
 
 class DjangoOrganizationModelPermissionsTests(OrganizationsTestCase):

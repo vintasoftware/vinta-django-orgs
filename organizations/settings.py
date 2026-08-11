@@ -2,6 +2,7 @@ from typing import Any
 
 from django.conf import settings
 from django.core.signals import setting_changed
+from django.db.models import Model
 from django.dispatch import receiver
 
 # ``get_setting`` is called from every manager that scopes a queryset and from
@@ -10,9 +11,41 @@ from django.dispatch import receiver
 _settings_cache: dict[str, Any] | None = None
 
 
+def _default_organization_owner_permissions() -> list[str]:
+    """The add/change/delete permissions for the three models an owner administers.
+
+    Derived from the models rather than spelled out, because two of them are
+    swappable: a project that pointed ``ORGANIZATION_MODEL`` at
+    ``tenancy.Organization`` needs ``tenancy.change_organization``, and a
+    hardcoded ``organizations.change_organization`` names a permission that
+    Django never created for it. The owner group was then built with nothing in
+    it, and every ``DjangoModelPermissions`` check on the organization endpoints
+    returned 403.
+    """
+    from organizations.conf import get_organization_membership_model, get_organization_model
+    from organizations.models import OrganizationSite
+
+    # Annotated: the three have no common base narrower than ``Model``, so
+    # inference otherwise lands on ``object``.
+    models: list[type[Model]] = [get_organization_model(), get_organization_membership_model(), OrganizationSite]
+
+    return [
+        '%s.%s_%s' % (model._meta.app_label, action, model._meta.model_name)
+        for model in models
+        for action in ('add', 'change', 'delete')
+    ]
+
+
 def _build_settings() -> dict[str, Any]:
     organization_settings = getattr(settings, 'SHARED_SCHEMA_ORGANIZATIONS', {})
     serializers = organization_settings.get('SERIALIZERS', {})
+
+    # Resolved here rather than inline below so that a project which configured
+    # its own list never touches the app registry -- and so that an explicitly
+    # empty list stays empty instead of falling back to the derived one.
+    owner_permissions = organization_settings.get('DEFAULT_ORGANIZATION_OWNER_PERMISSIONS')
+    if owner_permissions is None:
+        owner_permissions = _default_organization_owner_permissions()
 
     return {
         'ORGANIZATION_SERIALIZER': serializers.get(
@@ -63,20 +96,7 @@ def _build_settings() -> dict[str, Any]:
         'ORGANIZATION_CACHE_ALIAS': organization_settings.get('ORGANIZATION_CACHE_ALIAS', 'default'),
         # Bounds how long a write that bypassed Django can go uncorrected.
         'ORGANIZATION_CACHE_TIMEOUT': organization_settings.get('ORGANIZATION_CACHE_TIMEOUT', 300),
-        'DEFAULT_ORGANIZATION_OWNER_PERMISSIONS': organization_settings.get(
-            'DEFAULT_ORGANIZATION_OWNER_PERMISSIONS',
-            [
-                'organizations.add_organization',
-                'organizations.change_organization',
-                'organizations.delete_organization',
-                'organizations.add_organizationsite',
-                'organizations.change_organizationsite',
-                'organizations.delete_organizationsite',
-                'organizations.add_organizationmembership',
-                'organizations.delete_organizationmembership',
-                'organizations.change_organizationmembership',
-            ],
-        ),
+        'DEFAULT_ORGANIZATION_OWNER_PERMISSIONS': owner_permissions,
     }
 
 

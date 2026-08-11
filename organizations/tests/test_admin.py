@@ -4,14 +4,25 @@
 group, and the changelist renders it once per row.
 """
 
+from typing import TYPE_CHECKING
+
 from django.contrib import admin
 from django.contrib.auth.models import User
 from django.test import RequestFactory
 
+from organizations.conf import get_organization_membership_model
 from organizations.helpers.memberships import create_membership
 from organizations.helpers.organizations import create_default_organization_groups
-from organizations.models import OrganizationMembership, OrganizationSite
+from organizations.models import OrganizationSite
 from tests.utils import OrganizationsTestCase
+
+# Resolved at runtime so the admin under test is the one registered for whichever
+# membership model is configured. Type checking runs against the default settings
+# module and is shown the concrete class.
+if TYPE_CHECKING:
+    from organizations.models import OrganizationMembership
+else:
+    OrganizationMembership = get_organization_membership_model()
 
 
 class AdminQueryCountTests(OrganizationsTestCase):

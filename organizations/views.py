@@ -10,6 +10,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import BaseSerializer
 
+from organizations.conf import get_organization_model
 from organizations.helpers.organizations import get_current_organization
 from organizations.models import Organization, OrganizationSite
 from organizations.permissions import DjangoOrganizationModelPermissions
@@ -34,10 +35,12 @@ class OrganizationListView(generics.ListCreateAPIView):
         return import_from_string(get_setting('ORGANIZATION_SERIALIZER'))
 
     def get_queryset(self) -> QuerySet[Organization]:
+        organizations = get_organization_model()._default_manager
+
         if self.request.user.is_authenticated:
-            return Organization.objects.filter(memberships__user=self.request.user).distinct()
+            return organizations.filter(memberships__user=self.request.user).distinct()
         else:
-            return Organization.objects.none()
+            return organizations.none()
 
 
 class OrganizationDetailsView(generics.RetrieveUpdateDestroyAPIView):
@@ -47,10 +50,12 @@ class OrganizationDetailsView(generics.RetrieveUpdateDestroyAPIView):
         return import_from_string(get_setting('ORGANIZATION_SERIALIZER'))
 
     def get_queryset(self) -> QuerySet[Organization]:
+        organizations = get_organization_model()._default_manager
+
         if self.request.user.is_authenticated:
-            return Organization.objects.filter(memberships__user=self.request.user).distinct()
+            return organizations.filter(memberships__user=self.request.user).distinct()
         else:
-            return Organization.objects.none()
+            return organizations.none()
 
     def get_object(self) -> Organization:
         # The organization the request is already bound to, so the detail route

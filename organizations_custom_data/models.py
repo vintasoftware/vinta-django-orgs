@@ -6,19 +6,21 @@ from django.conf import settings
 from django.contrib.auth.models import Group
 from django.contrib.contenttypes.models import ContentType
 from django.db import models, transaction
-from django.db.models.signals import m2m_changed, post_save
+from django.db.models.signals import post_save
 from django.dispatch import receiver
 from model_utils.choices import Choices
 from model_utils.fields import StatusField
 from model_utils.models import TimeStampedModel
 
+from organizations.conf import organization_model_string
 from organizations.mixins import MultipleOrganizationsModelMixin, SingleOrganizationModelMixin
-from organizations.models import OrganizationMembership
 from organizations_custom_data.managers import OrganizationSpecificTableRowManager
 from organizations_custom_data.mixins import OrganizationSpecificFieldsModelMixin, OrganizationSpecificPivotTable
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
+
+    from organizations.models import Organization, OrganizationMembership
 
 
 class OrganizationSpecificTable(SingleOrganizationModelMixin):
@@ -91,7 +93,9 @@ class OrganizationSpecificTablesRelationship(SingleOrganizationModelMixin):
     )
 
 
-@receiver(post_save, sender=OrganizationMembership)
+# Connected in ``OrganizationsCustomDataConfig.ready()`` rather than decorated:
+# the membership model is swappable, so the sender is only known once the app
+# registry is populated.
 def create_organization_specific_tables_relationship(
     sender: type[OrganizationMembership], instance: OrganizationMembership, created: bool, *args: Any, **kwargs: Any
 ) -> None:
@@ -104,7 +108,8 @@ def create_organization_specific_tables_relationship(
             new_rel.groups.add(tstgroup)
 
 
-@receiver(m2m_changed, sender=OrganizationMembership.groups.through)
+# Likewise connected from ``ready()`` -- the sender is the configured membership
+# model's ``groups`` through table.
 def add_group_organization_specific_tables_relationship(
     sender: type[Any], instance: OrganizationMembership, action: str, *args: Any, **kwargs: Any
 ) -> None:
@@ -120,9 +125,11 @@ def add_group_organization_specific_tables_relationship(
 class OrganizationSpecificFieldsValidator(MultipleOrganizationsModelMixin):
     module_path = models.CharField(max_length=255)
     # Redeclared only to name the reverse accessor, which gives the field --
-    # and so its related manager -- a type of its own.
-    organizations = models.ManyToManyField(  # type: ignore[assignment]
-        'organizations.Organization', related_name='validators_available'
+    # and so its related manager -- a type of its own. Annotated explicitly
+    # because the target is a runtime call rather than a literal, so the type
+    # checker cannot infer what it relates to.
+    organizations: models.ManyToManyField[Organization, Any] = models.ManyToManyField(
+        organization_model_string(), related_name='validators_available'
     )
 
     def __str__(self) -> str:

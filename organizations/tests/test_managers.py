@@ -6,13 +6,13 @@ from django.test import TestCase, override_settings
 from model_bakery import baker
 
 from exampleproject.articles.models import Article, Tag
+from organizations.conf import get_organization_membership_model
 from organizations.exceptions import OrganizationNotFoundError
 from organizations.helpers.organizations import (
     clear_current_organization,
     create_organization,
     set_current_organization,
 )
-from organizations.models import OrganizationMembership
 
 
 class SingleOrganizationModelManagerTests(TestCase):
@@ -135,12 +135,13 @@ class NoneTests(TestCase):
     under ``STRICT_ORGANIZATION_FILTER``.
     """
 
-    # ``OrganizationMembership`` is in here because the library's own model is
-    # the one a project is most likely to call this on outside a request.
+    # The membership model is in here because the library's own is the one a
+    # project is most likely to call this on outside a request. Resolved rather
+    # than imported so the swapped run exercises the project's own model.
     #
     # Annotated ``list[Any]`` rather than ``list[type[Model]]`` because these are
     # read through ``objects``, which ``Model`` itself does not declare.
-    scoped_models: list[Any] = [Article, Tag, OrganizationMembership]
+    scoped_models: list[Any] = [Article, Tag, get_organization_membership_model()]
 
     def setUp(self) -> None:
         self.organization = create_organization(name='organization', slug='organization')

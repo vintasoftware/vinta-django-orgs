@@ -1,16 +1,27 @@
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from django.contrib.auth.models import Permission, User
 from django.test import TestCase
 
 from organizations.auth_backends import OrganizationModelBackend
+from organizations.conf import get_organization_membership_model, get_organization_model
 from organizations.helpers.memberships import create_membership
 from organizations.helpers.organizations import (
     clear_current_organization,
     create_default_organization_groups,
     set_current_organization,
 )
-from organizations.models import Organization, OrganizationMembership
+
+# Resolved at runtime, so this module exercises whichever models
+# ``ORGANIZATION_MODEL`` and ``ORGANIZATION_MEMBERSHIP_MODEL`` name -- the
+# concrete ones by default, the test project's own under
+# ``tests.settings_swapped``. Type checking always runs against the default
+# settings module, so it is shown the concrete models.
+if TYPE_CHECKING:
+    from organizations.models import Organization, OrganizationMembership
+else:
+    Organization = get_organization_model()
+    OrganizationMembership = get_organization_membership_model()
 
 
 def group_permission_count(membership: OrganizationMembership) -> int:

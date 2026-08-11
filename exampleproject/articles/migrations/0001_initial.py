@@ -13,6 +13,8 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
+
+        migrations.swappable_dependency(settings.ORGANIZATION_MODEL),
         ('organizations', '0001_initial'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
@@ -37,7 +39,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('text', models.CharField(max_length=100)),
-                ('organizations', models.ManyToManyField(to='organizations.Organization')),
+                ('organizations', models.ManyToManyField(to=settings.ORGANIZATION_MODEL)),
             ],
             options={
                 'abstract': False,
@@ -54,6 +56,6 @@ class Migration(migrations.Migration):
             model_name='article',
             name='organization',
             field=models.ForeignKey(default=organizations.mixins.get_default_organization,
-                                    on_delete=django.db.models.deletion.CASCADE, to='organizations.Organization'),
+                                    on_delete=django.db.models.deletion.CASCADE, to=settings.ORGANIZATION_MODEL),
         ),
     ]
