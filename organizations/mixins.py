@@ -24,7 +24,18 @@ if TYPE_CHECKING:
 def get_default_organization() -> Organization | None:
     from organizations.models import Organization
 
-    return Organization.objects.filter(slug=get_setting('DEFAULT_ORGANIZATION_SLUG')).first()
+    slug = get_setting('DEFAULT_ORGANIZATION_SLUG')
+
+    # ``DEFAULT_ORGANIZATION_SLUG = None`` is how a project says it has no
+    # catch-all organization, which is the right setting whenever every row must
+    # belong to an organization the caller selected. Without this the ``save()``
+    # fallback below still ran ``WHERE slug IS NULL`` -- a query that can never
+    # match a column declared ``NOT NULL`` -- once per saved row, immediately
+    # before raising ``OrganizationNotFoundError`` anyway.
+    if not slug:
+        return None
+
+    return Organization.objects.filter(slug=slug).first()
 
 
 class SingleOrganizationModelMixin(models.Model):
