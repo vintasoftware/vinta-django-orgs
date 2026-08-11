@@ -5,221 +5,350 @@ Usage
 Instalation on Django
 ---------------------
 
-To use Django Shared Schema Tenants in a project, add it to your `INSTALLED_APPS`:
+To use Django Shared Schema Organizations in a project, add it to your `INSTALLED_APPS`:
 
 .. code-block:: python
 
     INSTALLED_APPS = (
         ...
-        'shared_schema_tenants.apps.SharedSchemaTenantsConfig',
+        'organizations.apps.OrganizationsConfig',
         ...
     )
 
-Add Django Shared Schema Tenants's URL patterns:
+Add Django Shared Schema Organizations's URL patterns:
 
 .. code-block:: python
 
-    from shared_schema_tenants import urls as shared_schema_tenants_urls
+    from organizations import urls as organizations_urls
 
 
     urlpatterns = [
         ...
-        url(r'^', include(shared_schema_tenants_urls)),
+        url(r'^', include(organizations_urls)),
         ...
     ]
 
 
-Create new tenants
-------------------
+Create new organizations
+------------------------
 
-Run ``python manage.py createtenant`` to create you first tenant
+Run ``python manage.py createorganization`` to create you first organization
 
 
-Turning existing models into a Tenant Model
--------------------------------------------
+Turning existing models into a Organization Model
+-------------------------------------------------
 
-The models become tenant aware through inheritance. You just have to
-make your model inherit from ``SingleTenantModelMixin`` or
-``MultipleTenantsModelMixin`` and you’re set.
+The models become organization aware through inheritance. You just have to
+make your model inherit from ``SingleOrganizationModelMixin`` or
+``MultipleOrganizationsModelMixin`` and you’re set.
 
 .. code:: python
 
-    from shared_schema_tenants.mixins import SingleTenantModelMixin, MultipleTenantsModel
+    from organizations.mixins import SingleOrganizationModelMixin, MultipleOrganizationsModel
 
-    class MyModelA(SingleTenantModelMixin)
+    class MyModelA(SingleOrganizationModelMixin)
         field1 = models.CharField(max_length=100)
         field2 = models.IntegerField()
 
     # ...
 
-    # 'default' tenant selected
-    instance = MyModelA(field1='test default tenant', field2=0)
+    # 'default' organization selected
+    instance = MyModelA(field1='test default organization', field2=0)
     instance.save()
 
     # ...
 
-    # 'other' tenant selected
-    instance = MyModelA(field1='test other tenant', field2=1)
+    # 'other' organization selected
+    instance = MyModelA(field1='test other organization', field2=1)
     instance.save()
 
     print(MyModel.objects.filter(field1__icontains="test"))
-    # prints only the instance with 'test other tenant' in field1
-
-    Obs.: For Django 1.8 and 1.9 you have to access the data by the active tenant through :python:`MyModel.tenant_objects.all()` due to a `Django bug that was fixes in version 1.10 <https://code.djangoproject.com/ticket/14891>`_
+    # prints only the instance with 'test other organization' in field1
 
 
-Selecting tenant on requests
+Querying other organizations
 ----------------------------
 
-Tenant site
-~~~~~~~~~~~
-
-If you access the site from a domain registered to a tenant, that tenant
-is automatically selected.
-
-Tenant-Slug HTTP header
-~~~~~~~~~~~~~~~~~~~~~~~
-
-If the header ``Tenant-Slug`` could be found in the request, the tenant
-with that slug is automatically selected.
-
-Forcing tenant selection
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-You can force tenant selection using set\_tenant method.
+``MyModel.objects`` is scoped to the selected organization. When you need to
+step outside that scope, say so explicitly. The same methods exist on the
+manager and on the queryset, so they chain after any other lookup:
 
 .. code:: python
 
-    from shared_schema_tenants.helpers import set_current_tenant
+    # Another organization, whichever one is currently selected
+    MyModel.objects.filter_by_organization(other_organization)
+    MyModel.objects.exclude_by_organization(other_organization)
+
+    # Every organization -- reports, migrations, maintenance commands
+    MyModel.objects.unscoped()
+
+    # Chaining, on any queryset
+    MyModel.original_manager.filter(field2__gt=0).filter_by_organization(other_organization)
+    MyModel.original_manager.filter(field2__gt=0).for_current_organization()
+
+``with_organization()`` (``with_organizations()`` on
+``MultipleOrganizationsModelMixin``) fetches the related organizations in the
+same query, which is worth doing whenever you read ``instance.organization``
+while iterating:
+
+.. code:: python
+
+    for instance in MyModel.objects.with_organization():
+        print(instance.organization.name)  # no query per row
+
+
+Relations that check the organization
+-------------------------------------
+
+A plain ``ForeignKey`` between two organization-aware models joins on the key
+alone, so nothing in the join says the two rows belong to the same
+organization. The managers scope the outermost query, but a relation traversal
+-- ``select_related('article')``, ``comment.article``,
+``filter(article__title=…)`` -- reaches whatever row the key points at.
+
+``OrganizationSafeForeignKey`` and ``OrganizationSafeOneToOneField`` put the
+organization into the JOIN's ON clause:
+
+.. code:: python
+
+    from organizations.fields import OrganizationSafeForeignKey
+    from organizations.mixins import SingleOrganizationModelMixin
+
+    class Comment(SingleOrganizationModelMixin):
+        article = OrganizationSafeForeignKey(Article, on_delete=models.CASCADE,
+                                             related_name='comments')
+        text = models.TextField()
+
+.. code:: sql
+
+    -- Comment.objects.select_related('article')
+    INNER JOIN articles_article
+       ON (articles_comment.article_fk_id = articles_article.id
+      AND articles_comment.organization_id = articles_article.organization_id)
+
+A row pointing at another organization's article simply does not join: it reads
+as missing (``Article.DoesNotExist``, or absent from the results) rather than as
+someone else's data.
+
+Each declaration contributes two fields. ``article_fk`` is the real
+``ForeignKey`` -- it owns the column, the database constraint and the cascade.
+``article`` is the organization-checked relation, and it is the one to
+traverse. Reads, filters and ``select_related`` therefore get the check by
+default, while writes keep looking like an ordinary foreign key:
+
+.. code:: python
+
+    Comment.objects.create(article=article, text='…')   # also copies the organization over
+    Comment(article_id=article.id, text='…')
+    comment.article = article
+
+    comment.save(update_fields=['article'])
+    Comment.objects.bulk_update(comments, ['article'])
+    Comment.objects.filter(...).update(article=other_article)
+
+Passing the instance is preferred over the id: Django's descriptor copies the
+target's organization onto the new row, so the two cannot drift apart.
+
+The same reasoning decides what each write persists. ``save(update_fields=…)``
+and ``bulk_update`` have an instance in hand, whose organization the descriptor
+has already kept in step, so naming the relation writes *both* of its columns --
+reassigning to an article in another organization moves the comment along with
+it, exactly as a full ``save()`` would.
+
+A queryset ``update()`` has no instance and matches many rows at once, so it
+writes the key only. Writing the organization there would silently move every
+matched row into the target's organization, which is a worse failure than the
+one it would prevent. Point ``update()`` at a target in the same organization;
+if you do not, the rows read as missing through the relation rather than as
+another organization's data.
+
+Both models must be organization-aware, since the join reads ``organization_id``
+on each side. Note that the check is at the ORM level -- the database is not
+stopping a mismatched row from being written by raw SQL, it just will not be
+readable through the relation.
+
+
+CACHE_ORGANIZATION_RETRIEVAL
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``retrieve_by_domain`` is the first retriever a request tries, and it costs one
+query mapping the site to its organization -- on every request that reads
+organization-scoped data. Set this to ``True`` to cache that mapping:
+
+.. code:: python
+
+    SHARED_SCHEMA_ORGANIZATIONS = {
+        'CACHE_ORGANIZATION_RETRIEVAL': True,
+        'ORGANIZATION_CACHE_ALIAS': 'default',
+        'ORGANIZATION_CACHE_TIMEOUT': 300,
+    }
+
+**Off by default, deliberately.** A stale entry here does not make a page slow,
+it serves one organization's data to another. Two things bound that risk:
+writing an ``Organization`` or an ``OrganizationSite`` drops the affected
+entries, and entries expire on their own, so a write that bypasses Django --
+raw SQL, a restore, another service sharing the database -- is corrected within
+``ORGANIZATION_CACHE_TIMEOUT`` rather than never. If writes to those two tables
+only ever happen through Django, the invalidation is exact and the timeout is
+just a safety net.
+
+The organization is cached as its column values rather than as a pickled model,
+so a deploy that adds or removes a field reads as a miss instead of
+reconstructing an instance that no longer matches the table.
+
+default value: ``False``
+
+
+Filtering across a safe relation
+--------------------------------
+
+``filter(article__status='published')`` joins, and the organization-safe join
+is one PostgreSQL misestimates -- it costs the key match and the organization
+match as though they were independent, so under a ``LIMIT`` it builds the whole
+join and sorts it to return one page. ``filter_related_without_join()`` tests
+each row instead:
+
+.. code:: python
+
+    Comment.objects.filter_related_without_join(article__status='published')[:50]
+
+**It is a trade, not a free win.** The page is filled by walking the
+organization's rows in primary key order and checking each one, so it is fast
+when matches are common and slow when they are rare. Measured on 25
+organizations of 3,000 articles each, a page of 50:
+
+=========================  ======  ==============================
+Filter matches             join    filter_related_without_join
+=========================  ======  ==============================
+1 in 3 articles            1.854   0.382
+~1 in 100                  0.508   0.306
+~1 in 1000                 0.507   6.345
+nothing                    0.668   6.579
+=========================  ======  ==============================
+
+With nothing to find it walks everything the organization owns. PostgreSQL's
+join is the safer default precisely because it bounds that case -- reach for
+this when you know the filter is not selective, and measure if you are unsure.
+
+Rows are matched exactly as the relation would match them, organization
+included: a comment pointing at another organization's article does not match.
+Only relations declared with ``OrganizationSafeForeignKey`` or
+``OrganizationSafeOneToOneField`` are accepted; an ordinary foreign key joins on
+the key alone, is estimated correctly, and has nothing to gain.
+
+
+Selecting organization on requests
+----------------------------------
+
+Organization site
+~~~~~~~~~~~~~~~~~
+
+If you access the site from a domain registered to a organization, that organization
+is automatically selected.
+
+Organization-Slug HTTP header
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If the header ``Organization-Slug`` could be found in the request, the organization
+with that slug is automatically selected.
+
+Forcing organization selection
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Outside the request/response cycle -- Celery tasks, management commands, tests
+-- select the organization with ``organization_context``. It accepts a slug or
+an ``Organization``, works as a context manager or as a decorator, and restores
+whatever was selected before when it exits (including when the block raises):
+
+.. code:: python
+
+    from organizations.helpers import organization_context
 
     from .models import MyModel
 
     def my_function():
-        set_current_tenant('default')
+        with organization_context('default'):
+            return list(MyModel.objects.all())  # only organization__slug='default'
 
-        return MyModel.objects.all() # return only the models with tenant__slug='default'
 
+    @organization_context('default')
+    def my_task():
+        return MyModel.objects.count()
 
-    Obs.: For Django 1.8 and 1.9 you have to access the data by the active tenant through :python:`MyModel.tenant_objects.all()` due to a `Django bug that was fixes in version 1.10 <https://code.djangoproject.com/ticket/14891>`_
+``set_current_organization`` selects an organization without a scope, and
+``clear_current_organization`` unselects it. Prefer ``organization_context``:
+a bare ``set_current_organization`` stays in effect for the rest of the thread
+(or async task), which is rarely what a helper function wants.
 
-Accessing current tenant
-------------------------
+.. code:: python
+
+    from organizations.helpers import clear_current_organization, set_current_organization
+
+    set_current_organization('default')
+    # ...
+    clear_current_organization()
+
+The selection is stored in a ``contextvars.ContextVar``, so it is isolated per
+thread and per async task, and the middleware restores the previous value when
+the response is returned.
+
+Accessing current organization
+------------------------------
 
 From Request
 ~~~~~~~~~~~~
 
-You can access the current tenant from the request.
+You can access the current organization from the request.
 
 .. code:: python
 
     def my_view(request):
-        current_tenant = request.tenant
+        current_organization = request.organization
         # ...
 
 
-From ``get_current_tenant`` helper
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+From ``get_current_organization`` helper
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code:: python
 
-    from shared_schema_tenants.helpers import get_current_tenant
+    from organizations.helpers import get_current_organization
 
     def my_view(request):
-        current_tenant = get_current_tenant()
+        current_organization = get_current_organization()
         # ...
 
 
-The models that inherit from ``SingleTenantModelMixin`` or
-``MultipleTenantsModelMixin`` are also tenant aware. If you retrieve a
-collection from database with a tenant context in your request, your
-collection will already be filtered by that tenant.
+The models that inherit from ``SingleOrganizationModelMixin`` or
+``MultipleOrganizationsModelMixin`` are also organization aware. If you retrieve a
+collection from database with a organization context in your request, your
+collection will already be filtered by that organization.
 
 
 
 Configuration options
 ---------------------
 
-To configure how Django Shared Schema Tenants works you can set a bunch of options in the SHARED_SCHEMA_TENANTS dictionary in django settings
+To configure how Django Shared Schema Organizations works you can set a bunch of options in the SHARED_SCHEMA_ORGANIZATIONS dictionary in django settings
 
 SERIALIZERS
 ~~~~~~~~~~~
-It's a dict where you can replace the serializers to be used in Django Shared Schema Tenants REST API endpoints.
+It's a dict where you can replace the serializers to be used in Django Shared Schema Organizations REST API endpoints.
 default value:
 
 .. code:: python
     {
-        'TENANT_SERIALIZER': 'shared_schema_tenants.serializers.TenantSerializer',
-        'TENANT_SITE_SERIALIZER': 'shared_schema_tenants.serializers.TenantSiteSerializer',
-        'TENANT_SETTINGS_SERIALIZER': 'shared_schema_tenants.serializers.TenantSettingsSerializer',
-        'TENANT_SITE_SERIALIZER': 'shared_schema_tenants.serializers.TenantSiteSerializer',
+        'ORGANIZATION_SERIALIZER': 'organizations.serializers.OrganizationSerializer',
+        'ORGANIZATION_SITE_SERIALIZER': 'organizations.serializers.OrganizationSiteSerializer',
+        'ORGANIZATION_MEMBERSHIP_SERIALIZER': None,
     }
 
-DEFAULT_TENANT_SLUG
-~~~~~~~~~~~~~~~~~~~
+DEFAULT_ORGANIZATION_SLUG
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In here you can define you default tenant (tenant to be use in case the middleware can't retrieve the tenant from the request)
+In here you can define you default organization (organization to be use in case the middleware can't retrieve the organization from the request)
 
 default value: ``'default'``
-
-
-TENANT_SETTINGS_FIELDS
-~~~~~~~~~~~~~~~~~~~~~~
-
-In here you define the fields in tenant setting. Every field is a dict and must have the followiing format:
-
-.. code:: python
-    {
-        'settings_key_one': {
-            'type': 'number'
-            'default': DEFAULT_VALUE_OF_THE_CORRECT_TYPE,
-            'validators': [
-                VALIDATOR_ONE, # validators must return clead data for the field or
-                VALIDATOR_TWO, # raise django.core.exceptions.ValidationError
-            ],
-        },
-        'settings_key_two': {
-            'type': 'string'
-            'default': DEFAULT_VALUE_OF_THE_CORRECT_TYPE,
-            'validators': [
-                VALIDATOR_THREE, # validators must return clead data for the field or
-            ],
-        },
-
-    }
-
-The available types are ``'number'``, ``'string'``, ``'boolean'``, ``'object'`` and ``'list'``.
-
-default value: ``{ }``
-
-
-TENANT_SETTINGS_FIELDS
-~~~~~~~~~~~~~~~~~~~~~~
-
-In here you define the fields in tenant extra_data. This field is a dict and must have the following format:
-
-.. code:: python
-    {
-        'extra_data_key_one': {
-            'type': 'number'
-            'default': DEFAULT_VALUE_OF_THE_CORRECT_TYPE,
-            'validators': [
-                VALIDATOR_ONE, # validators must return clead data for the field or
-                VALIDATOR_TWO, # raise django.core.exceptions.ValidationError
-            ],
-        },
-        'extra_data_key_two': {
-            'type': 'string'
-            'default': DEFAULT_VALUE_OF_THE_CORRECT_TYPE,
-            'validators': [
-                VALIDATOR_THREE, # validators must return clead data for the field or
-            ],
-        },
-
-    }
-
-The available types are ``'number'``, ``'string'``, ``'boolean'``, ``'object'`` and ``'list'``.
-
-default value: { }
 
 
 DEFAULT_SITE_DOMAIN
@@ -230,9 +359,61 @@ In here you define your default site domain.
 default value: ``'localhost'``
 
 
-TENANT_HTTP_HEADER
-~~~~~~~~~~~~~~~~~~
+ORGANIZATION_HTTP_HEADER
+~~~~~~~~~~~~~~~~~~~~~~~~
 
-In here you can defined which http header we should use to extract the tenant slug
+In here you can defined which http header we should use to extract the organization slug
 
-default value: ``'Tenant-Slug'``
+default value: ``'Organization-Slug'``
+
+
+STRICT_ORGANIZATION_FILTER
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When no organization is selected, querying an organization-aware model returns
+an empty queryset. Set this to ``True`` to raise ``OrganizationNotFoundError``
+instead: an empty result is hard to tell from "no data yet", and in a task or a
+management command a missing selection is the likelier explanation.
+
+Explicitly scoped reads (``filter_by_organization``, ``unscoped``,
+``original_manager``) are unaffected.
+
+default value: ``False``
+
+
+AUTO_DEFER_SAFE_JOINS
+~~~~~~~~~~~~~~~~~~~~~
+
+A paged query that ``select_related`` an organization-safe relation collects the
+page in a subquery before joining, instead of joining and then cutting the
+result down to a page::
+
+    Comment.objects.select_related('article').order_by('id')[:50]
+
+    # emitted as, in one query:
+    #   SELECT … FROM comment JOIN article ON (…)
+    #   WHERE comment.id IN (SELECT id FROM comment WHERE … ORDER BY id LIMIT 50)
+
+The join these relations produce matches on the organization as well as on the
+key. PostgreSQL costs those two conditions as though they were independent --
+they are not, the organization match is implied by the key match -- so it
+underestimates the join by roughly the number of organizations, and past a few
+dozen it abandons the index walk that could have stopped at the end of the page
+for a hash join it has to sort. The misestimate grows with the number of
+organizations, so no index fixes it. Collecting the page first hands the planner
+a set of rows instead of an estimate.
+
+Measured on 100 organizations of 3,000 articles each: 3.690 ms joined directly
+against 1.568 ms, both a single query. Only paged reads over a safe relation are
+affected -- plain foreign keys, unpaged reads and aggregates are untouched, and
+aggregates in particular are much *faster* through a safe relation than a plain
+one.
+
+On a backend that cannot put a sliced subquery inside ``IN`` -- MySQL, which
+sets ``allow_sliced_subqueries_with_in = False`` -- the related rows are fetched
+in a second query instead, which costs a round trip but is equally free of the
+estimate.
+
+Set this to ``False`` to join directly and page afterwards.
+
+default value: ``True``

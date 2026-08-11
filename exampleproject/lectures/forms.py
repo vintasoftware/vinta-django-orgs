@@ -1,9 +1,9 @@
-from shared_schema_tenants_custom_data.forms import TenantSpecificModelForm
+from organizations_custom_data.forms import OrganizationSpecificModelForm
+
 from .models import Lecture
 
 
-class LectureForm(TenantSpecificModelForm):
-
+class LectureForm(OrganizationSpecificModelForm):
     class Meta:
         model = Lecture
         fields = ['id', 'subject', 'speaker', 'description']

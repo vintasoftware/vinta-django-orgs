@@ -5,7 +5,7 @@ from __future__ import unicode_literals
 from django.conf import settings
 from django.db import migrations, models
 import django.db.models.deletion
-import shared_schema_tenants.mixins
+import organizations.mixins
 
 
 class Migration(migrations.Migration):
@@ -13,7 +13,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('shared_schema_tenants', '0001_initial'),
+        ('organizations', '0001_initial'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
@@ -37,7 +37,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('text', models.CharField(max_length=100)),
-                ('tenants', models.ManyToManyField(to='shared_schema_tenants.Tenant')),
+                ('organizations', models.ManyToManyField(to='organizations.Organization')),
             ],
             options={
                 'abstract': False,
@@ -52,7 +52,8 @@ class Migration(migrations.Migration):
         ),
         migrations.AddField(
             model_name='article',
-            name='tenant',
-            field=models.ForeignKey(default=shared_schema_tenants.mixins.get_default_tenant, on_delete=django.db.models.deletion.CASCADE, to='shared_schema_tenants.Tenant'),
+            name='organization',
+            field=models.ForeignKey(default=organizations.mixins.get_default_organization,
+                                    on_delete=django.db.models.deletion.CASCADE, to='organizations.Organization'),
         ),
     ]

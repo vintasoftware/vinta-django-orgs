@@ -1,0 +1,162 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vinta-django-orgs"
+dynamic = ["version"]
+description = "A lib to help in the creation of shared schema multi organization applications without suffering"
+readme = "README.rst"
+requires-python = ">=3.11,<3.16"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Hugo Bessa", email = "hugo@vinta.com.br" }]
+keywords = ["vinta-django-orgs"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: Django",
+    "Framework :: Django :: 5.2",
+    "Framework :: Django :: 6.0",
+    "Framework :: Django :: 6.1",
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
+]
+dependencies = [
+    "django>=5.2,<6.3",
+    "django-model-utils>=5.0",
+    "djangorestframework>=3.16",
+]
+
+[project.urls]
+Homepage = "https://github.com/vintasoftware/vinta-django-orgs"
+Documentation = "https://vinta-django-orgs.readthedocs.io"
+Source = "https://github.com/vintasoftware/vinta-django-orgs"
+
+[dependency-groups]
+test = [
+    "coverage>=7.6",
+    "model-bakery>=1.20",
+    "tox>=4.22",
+    "tox-uv>=1.13",
+]
+bench = [
+    # The benchmark compares this library against schema-per-tenant, so it
+    # needs the competing implementation and a PostgreSQL driver.
+    "django-tenants>=3.14",
+    "psycopg[binary]>=3.2",
+]
+dev = [
+    { include-group = "test" },
+    "bump-my-version>=1.0",
+    "django-stubs[compatible-mypy]>=5.1",
+    "djangorestframework-stubs>=3.15",
+    "ipdb>=0.13",
+    "mypy>=1.14",
+    "pre-commit>=4.6.1",
+    "ruff>=0.16.2",
+]
+
+[tool.mypy]
+python_version = "3.11"
+# ``mypy_django_plugin`` resolves the ORM's dynamic attributes (managers,
+# reverse accessors, ``*_id`` fields, ``Field.__get__``); ``mypy_drf_plugin``
+# does the same for serializer fields.
+plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
+files = ["organizations", "organizations_custom_data", "tests", "exampleproject", "runtests.py", "manage.py"]
+# Migrations are generated, and the example project's settings module is a
+# script rather than something a consumer imports.
+exclude = '(/migrations/|^docs/|^benchmarks/)'
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_unused_configs = true
+strict_equality = true
+extra_checks = true
+
+[[tool.mypy.overrides]]
+# ``model_utils`` ships no type information.
+module = ["model_utils.*"]
+ignore_missing_imports = true
+
+[tool.django-stubs]
+django_settings_module = "tests.settings"
+
+[tool.ruff]
+line-length = 119
+target-version = "py311"
+extend-exclude = [
+    "*/migrations",
+    "docs/conf.py",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "DJ",   # flake8-django
+]
+ignore = [
+    # Member ordering inside models is stylistic and would churn every model.
+    "DJ012",
+    # %-formatting is kept on purpose: `_('%(field)s ...') % {...}` is the
+    # documented way to interpolate into a lazy translation string.
+    "UP031",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# The benchmark models exist to give PostgreSQL a schema to run against. They
+# are never rendered anywhere, so a __str__ on each of them would be noise.
+"benchmarks/apps/*/models.py" = ["DJ008"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["organizations", "organizations_custom_data", "exampleproject", "tests"]
+
+[tool.ruff.format]
+# The codebase was written with single quotes; keeping them means the formatter
+# does not rewrite every string in the project. Drop this line to move to ruff's
+# double-quote default.
+quote-style = "single"
+
+[tool.hatch.version]
+path = "organizations/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+# ``py.typed`` in each package ships the annotations to consumers (PEP 561);
+# without it a project installing this one sees ``Any`` everywhere.
+packages = ["organizations", "organizations_custom_data"]
+exclude = [
+    "organizations/tests",
+    "organizations_custom_data/tests",
+]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "organizations",
+    "organizations_custom_data",
+    "AUTHORS.rst",
+    "CONTRIBUTING.rst",
+    "HISTORY.rst",
+    "LICENSE",
+    "README.rst",
+]
+
+[tool.bumpversion]
+current_version = "0.0.3"
+commit = true
+tag = true
+
+[[tool.bumpversion.files]]
+filename = "organizations/__init__.py"

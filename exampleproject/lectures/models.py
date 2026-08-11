@@ -1,12 +1,13 @@
-from django.db import models
 from django.conf import settings
-from shared_schema_tenants_custom_data.mixins import TenantSpecificFieldsModelMixin
+from django.db import models
+
+from organizations_custom_data.mixins import OrganizationSpecificFieldsModelMixin
 
 
-class Lecture(TenantSpecificFieldsModelMixin):
+class Lecture(OrganizationSpecificFieldsModelMixin):
     subject = models.CharField(max_length=100)
     description = models.TextField()
-    speaker = models.ForeignKey(settings.AUTH_USER_MODEL)
+    speaker = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return '%s - %s' % (self.subject, self.speaker)

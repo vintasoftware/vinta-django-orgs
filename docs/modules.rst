@@ -1,7 +1,7 @@
-shared_schema_tenants
-=====================
+organizations
+=============
 
 .. toctree::
    :maxdepth: 4
 
-   shared_schema_tenants
+   organizations

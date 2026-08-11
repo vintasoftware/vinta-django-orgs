@@ -38,12 +38,11 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-
     'rest_framework',
-    'shared_schema_tenants.apps.SharedSchemaTenantsConfig',
-    'shared_schema_tenants_custom_data.apps.SharedSchemaTenantsCustomDataConfig',
-    'articles.apps.ArticlesConfig',
-    'lectures.apps.LecturesConfig',
+    'organizations.apps.OrganizationsConfig',
+    'organizations_custom_data.apps.OrganizationsCustomDataConfig',
+    'articles',
+    'lectures',
 ]
 
 MIDDLEWARE = [
@@ -54,7 +53,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'shared_schema_tenants.middleware.TenantMiddleware',
+    'organizations.middleware.OrganizationMiddleware',
 ]
 
 ROOT_URLCONF = 'exampleproject.urls'
@@ -117,9 +116,10 @@ TIME_ZONE = 'UTC'
 
 USE_I18N = True
 
-USE_L10N = True
-
 USE_TZ = True
+
+# The example apps ship migrations created with AutoField primary keys.
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
 
 
 # Static files (CSS, JavaScript, Images)
@@ -127,13 +127,12 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 
-SHARED_SCHEMA_TENANTS = {
-    'DEFAULT_TENANT_SLUG': 'default',
+SHARED_SCHEMA_ORGANIZATIONS = {
+    'DEFAULT_ORGANIZATION_SLUG': 'default',
 }
 
 
 AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',
-    'shared_schema_tenants.auth_backends.TenantModelBackend'
+    'organizations.auth_backends.OrganizationModelBackend',
 ]
-

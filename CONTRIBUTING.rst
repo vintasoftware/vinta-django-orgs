@@ -13,7 +13,7 @@ Types of Contributions
 Report Bugs
 ~~~~~~~~~~~
 
-Report bugs at https://github.com/hugobessa/django-shared-schema-tenants/issues.
+Report bugs at https://github.com/hugobessa/django-shared-schema-organizations/issues.
 
 If you are reporting a bug, please include:
 
@@ -36,14 +36,14 @@ is open to whoever wants to implement it.
 Write Documentation
 ~~~~~~~~~~~~~~~~~~~
 
-Django Shared Schema Tenants could always use more documentation, whether as part of the
-official Django Shared Schema Tenants docs, in docstrings, or even on the web in blog posts,
+Django Shared Schema Organizations could always use more documentation, whether as part of the
+official Django Shared Schema Organizations docs, in docstrings, or even on the web in blog posts,
 articles, and such.
 
 Submit Feedback
 ~~~~~~~~~~~~~~~
 
-The best way to send feedback is to file an issue at https://github.com/hugobessa/django-shared-schema-tenants/issues.
+The best way to send feedback is to file an issue at https://github.com/hugobessa/django-shared-schema-organizations/issues.
 
 If you are proposing a feature:
 
@@ -55,18 +55,22 @@ If you are proposing a feature:
 Get Started!
 ------------
 
-Ready to contribute? Here's how to set up `django-shared-schema-tenants` for local development.
+Ready to contribute? Here's how to set up `django-shared-schema-organizations` for local development.
 
-1. Fork the `django-shared-schema-tenants` repo on GitHub.
+1. Fork the `django-shared-schema-organizations` repo on GitHub.
 2. Clone your fork locally::
 
-    $ git clone git@github.com:your_name_here/django-shared-schema-tenants.git
+    $ git clone git@github.com:your_name_here/django-shared-schema-organizations.git
 
-3. Install your local copy into a virtualenv. Assuming you have virtualenvwrapper installed, this is how you set up your fork for local development::
+3. Install your local copy. Dependencies are managed with `uv <https://docs.astral.sh/uv/>`_,
+   which creates the virtualenv and installs the project in editable mode for you::
 
-    $ mkvirtualenv django-shared-schema-tenants
-    $ cd django-shared-schema-tenants/
-    $ python setup.py develop
+    $ cd django-shared-schema-organizations/
+    $ uv sync
+    $ make hooks
+
+   ``make hooks`` installs the pre-commit hooks, so every commit is linted and
+   type-checked before it lands.
 
 4. Create a branch for local development::
 
@@ -74,14 +78,36 @@ Ready to contribute? Here's how to set up `django-shared-schema-tenants` for loc
 
    Now you can make your changes locally.
 
-5. When you're done making changes, check that your changes pass flake8 and the
-   tests, including testing other Python versions with tox::
+5. When you're done making changes, check that your changes pass ruff, mypy and
+   the tests, including testing every supported Python and Django version with
+   tox::
 
-        $ flake8 shared_schema_tenants tests
-        $ python setup.py test
-        $ tox
+        $ make lint
+        $ make typecheck
+        $ make test
+        $ make test-all
 
-   To get flake8 and tox, just pip install them into your virtualenv.
+   `ruff <https://docs.astral.sh/ruff/>`_ is both the linter and the formatter.
+   ``make lint`` checks both; ``make format`` applies the automatic fixes and
+   reformats. ``make pre-commit`` runs all of that together with the file-hygiene
+   hooks over the whole tree, which is what CI checks.
+
+   ``make typecheck`` runs `mypy <https://mypy.readthedocs.io/>`_ with the
+   `django-stubs <https://github.com/typeddjango/django-stubs>`_ and
+   `djangorestframework-stubs
+   <https://github.com/typeddjango/djangorestframework-stubs>`_ plugins, which
+   is what lets it follow managers, reverse accessors and serializer fields.
+   The plugin reads ``tests.settings`` (see ``[tool.django-stubs]`` in
+   ``pyproject.toml``), so it needs the project installed rather than just the
+   sources. Both packages ship a ``py.typed`` marker, so the annotations are
+   part of the public API: a signature change is a breaking change for anyone
+   type-checking against this library. The whole tree is checked under
+   ``disallow_untyped_defs``, tests included.
+
+   Every tool comes from the ``dev`` dependency group, so ``uv sync`` is all the
+   setup you need. If you add or change a dependency, edit ``pyproject.toml`` and
+   run ``uv lock`` to refresh ``uv.lock`` -- the ``uv-lock`` hook fails the commit
+   if you forget.
 
 6. Commit your changes and push your branch to GitHub::
 
@@ -100,13 +126,18 @@ Before you submit a pull request, check that it meets these guidelines:
 2. If the pull request adds functionality, the docs should be updated. Put
    your new functionality into a function with a docstring, and add the
    feature to the list in README.rst.
-3. The pull request should work for Python 2.7, 3.5 and 3.6 and for PyPy. Check
-   https://travis-ci.org/hugobessa/django-shared-schema-tenants/pull_requests
-   and make sure that the tests pass for all supported Python versions.
+3. The pull request should work for every supported Python (3.11 to 3.15) and
+   Django (5.2 to 6.2) version. Check the GitHub Actions run on your pull request
+   and make sure that the whole matrix passes.
 
 Tips
 ----
 
 To run a subset of tests::
 
-    $ python -m unittest tests.test_shared_schema_tenants
+    $ uv run python runtests.py organizations.tests.test_models
+
+To run the example project against your working tree::
+
+    $ uv run python exampleproject/manage.py migrate
+    $ uv run python exampleproject/manage.py runserver

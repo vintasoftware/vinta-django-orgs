@@ -1,84 +1,63 @@
-# -*- coding: utf-8
-from __future__ import unicode_literals, absolute_import
-
-import django
-
 DEBUG = True
 USE_TZ = True
 
+# The example apps ship migrations created with AutoField primary keys.
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
+
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "lq54#hsg57uikn$*=dk+4t$(zg*2k6!^5+8opzp^lsgyp$s-rj"
+SECRET_KEY = 'lq54#hsg57uikn$*=dk+4t$(zg*2k6!^5+8opzp^lsgyp$s-rj'
 
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": ":memory:",
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': ':memory:',
     }
 }
 
-ROOT_URLCONF = "tests.urls"
+ROOT_URLCONF = 'tests.urls'
 
 ALLOWED_HOSTS = ['*']
 
 INSTALLED_APPS = [
-    "django.contrib.auth",
-    "django.contrib.contenttypes",
-    "django.contrib.sites",
-    "django.contrib.sessions",
-    "rest_framework",
-
-    "shared_schema_tenants.apps.SharedSchemaTenantsConfig",
-    "exampleproject.articles",
-    "exampleproject.lectures",
-    "shared_schema_tenants_custom_data.apps.SharedSchemaTenantsCustomDataConfig",
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sites',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'rest_framework',
+    'organizations.apps.OrganizationsConfig',
+    'exampleproject.articles',
+    'exampleproject.lectures',
+    'organizations_custom_data.apps.OrganizationsCustomDataConfig',
 ]
 
-
-def is_url(context, value, original_value):
-    from django.core.validators import URLValidator
-    from django.core.exceptions import ValidationError
-    from django.utils.text import ugettext_lazy as _
-    validate_url = URLValidator()
-    try:
-        validate_url(value)
-    except ValidationError as e:
-        raise ValidationError(_('This field must be a valid url'))
-    return value
-
-
-SHARED_SCHEMA_TENANTS = {
-    "DEFAULT_TENANT_EXTRA_DATA_FIELDS": {
-        'logo': {
-            'type': 'string',
-            'default': None,
-            'validators': [is_url],
-        },
-        'number_of_employees': {
-            'type': 'number',
-            'default': 0,
-        },
-        'is_non_profit': {
-            'type': 'boolean',
-            'default': False,
-        },
-    },
-    "DEFAULT_TENANT_SETTINGS_FIELDS": {
-        'notify_users_by_email': {
-            'type': 'boolean',
-            'default': True
-        },
-    },
-}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'shared_schema_tenants.middleware.TenantMiddleware',
+    'organizations.middleware.OrganizationMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+]
+
+# ``django.contrib.admin`` is installed so the admin classes this library
+# ships are actually exercised; it checks for these at startup.
+TEMPLATES = [
+    {
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'APP_DIRS': True,
+        'OPTIONS': {
+            'context_processors': [
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
+            ],
+        },
+    },
 ]
 
 REST_FRAMEWORK = {
@@ -88,6 +67,6 @@ REST_FRAMEWORK = {
 
 AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',
-    'shared_schema_tenants.auth_backends.TenantModelBackend',
-    'shared_schema_tenants_custom_data.auth_backends.TenantSpecificTablesBackend',
+    'organizations.auth_backends.OrganizationModelBackend',
+    'organizations_custom_data.auth_backends.OrganizationSpecificTablesBackend',
 ]

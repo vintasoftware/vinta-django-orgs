@@ -4,31 +4,30 @@ Installation
 
 At the command line::
 
-    $ easy_install django-shared-schema-tenants
+    $ pip install django-shared-schema-organizations
 
-Or, if you have virtualenvwrapper installed::
+Or, if your project is managed with `uv <https://docs.astral.sh/uv/>`_::
 
-    $ mkvirtualenv django-shared-schema-tenants
-    $ pip install django-shared-schema-tenants
+    $ uv add django-shared-schema-organizations
 
 
-To use Django Shared Schema Tenants in a project, add it to your `INSTALLED_APPS`:
+To use Django Shared Schema Organizations in a project, add it to your `INSTALLED_APPS`:
 
 .. code-block:: python
 
     INSTALLED_APPS = (
         ...
-        'shared_schema_tenants.apps.SharedSchemaTenantsConfig',
+        'organizations.apps.OrganizationsConfig',
         ...
     )
 
 
-You also have to add TenantMiddleware to django  `MIDDLEWARES`:
+You also have to add OrganizationMiddleware to django  `MIDDLEWARES`:
 
 .. code-block:: python
 
     MIDDLEWARES = [
         # ...
-        'shared_schema_tenants.middleware.TenantMiddleware',
+        'organizations.middleware.OrganizationMiddleware',
         # ...
     ]

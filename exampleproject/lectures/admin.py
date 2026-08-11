@@ -1,11 +1,12 @@
 from django.contrib import admin
-from shared_schema_tenants_custom_data.admin import TenantSpecificModelAdmin
+
+from organizations_custom_data.admin import OrganizationSpecificModelAdmin
 
 from .models import Lecture
 
 
-class LectureAdmin(TenantSpecificModelAdmin):
+class LectureAdmin(OrganizationSpecificModelAdmin):
     pass
 
 
-admin.sites.register(Lecture, LectureAdmin)
+admin.site.register(Lecture, LectureAdmin)

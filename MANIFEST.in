@@ -1,6 +1,0 @@
-include AUTHORS.rst
-include CONTRIBUTING.rst
-include HISTORY.rst
-include LICENSE
-include README.rst
-recursive-include shared_schema_tenants shared_schema_tenants_custom_data *.html *.png *.gif *js *.css *jpg *jpeg *svg *py

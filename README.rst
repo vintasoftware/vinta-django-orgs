@@ -1,29 +1,29 @@
-=============================
-Django Shared Schema Tenants
-=============================
+==================================
+Django Shared Schema Organizations
+==================================
 
-.. image:: https://badge.fury.io/py/django-shared-schema-tenants.svg
-    :target: https://badge.fury.io/py/django-shared-schema-tenants
+.. image:: https://badge.fury.io/py/django-shared-schema-organizations.svg
+    :target: https://badge.fury.io/py/django-shared-schema-organizations
 
-.. image:: https://travis-ci.org/hugobessa/django-shared-schema-tenants.svg?branch=master
-    :target: https://travis-ci.org/hugobessa/django-shared-schema-tenants
+.. image:: https://github.com/hugobessa/django-shared-schema-organizations/actions/workflows/ci.yml/badge.svg
+    :target: https://github.com/hugobessa/django-shared-schema-organizations/actions/workflows/ci.yml
 
-.. image:: https://codecov.io/gh/hugobessa/django-shared-schema-tenants/branch/master/graph/badge.svg
-    :target: https://codecov.io/gh/hugobessa/django-shared-schema-tenants
+.. image:: https://codecov.io/gh/hugobessa/django-shared-schema-organizations/branch/master/graph/badge.svg
+    :target: https://codecov.io/gh/hugobessa/django-shared-schema-organizations
 
 A lib to help in the creation applications with shared schema without suffering
 
 Documentation
 -------------
 
-The full documentation is at [ReadTheDocs](https://django-shared-schema-tenants.readthedocs.io).
+The full documentation is at [ReadTheDocs](https://django-shared-schema-organizations.readthedocs.io).
 
 Quickstart
 ----------
 
-Install Django Shared Schema Tenants::
+Install Django Shared Schema Organizations::
 
-    pip install django-shared-schema-tenants
+    pip install django-shared-schema-organizations
 
 Add it to your `INSTALLED_APPS`:
 
@@ -31,31 +31,31 @@ Add it to your `INSTALLED_APPS`:
 
     INSTALLED_APPS = (
         ...
-        'shared_schema_tenants.apps.SharedSchemaTenantsConfig',
+        'organizations.apps.OrganizationsConfig',
         ...
     )
 
-Add Django Shared Schema Tenants's URL patterns:
+Add Django Shared Schema Organizations's URL patterns:
 
 .. code-block:: python
 
-    from shared_schema_tenants import urls as shared_schema_tenants_urls
+    from django.urls import include, path
 
 
     urlpatterns = [
         ...
-        url(r'^', include(shared_schema_tenants_urls)),
+        path('', include('organizations.urls')),
         ...
     ]
 
 
-Add TenantMiddleware to your `MIDDLEWARES`:
+Add OrganizationMiddleware to your `MIDDLEWARES`:
 
 .. code-block:: python
 
     MIDDLEWARES = [
         # ...
-        'shared_schema_tenants.middleware.TenantMiddleware',
+        'organizations.middleware.OrganizationMiddleware',
         # ...
     ]
 
@@ -63,9 +63,9 @@ Add TenantMiddleware to your `MIDDLEWARES`:
 Features
 --------
 
-* **Tenants synced with django requests:** The active tenant can be extracted from the domain of the request and from a specific http header attribute.
-* **Easy data isolation between tenants:** You retrieve and create data the same way you do without tenants. The active tenant can be retrieved from the request, and can also be forcedly set.
-* **Partially shared data:** If there is data that can be accessed from more then one tenant in your applidation, you don't need to duplicate it.
+* **Organizations synced with django requests:** The active organization can be extracted from the domain of the request and from a specific http header attribute.
+* **Easy data isolation between organizations:** You retrieve and create data the same way you do without organizations. The active organization can be retrieved from the request, and can also be forcedly set.
+* **Partially shared data:** If there is data that can be accessed from more then one organization in your applidation, you don't need to duplicate it.
 
 
 Running Tests
@@ -75,9 +75,8 @@ Does the code actually work?
 
 ::
 
-    source <YOURVIRTUALENV>/bin/activate
-    (myenv) $ pip install tox
-    (myenv) $ tox
+    $ uv sync
+    $ uv run tox
 
 Credits
 -------
