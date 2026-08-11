@@ -4,14 +4,14 @@ Installation
 
 At the command line::
 
-    $ pip install django-shared-schema-organizations
+    $ pip install vinta-django-orgs
 
 Or, if your project is managed with `uv <https://docs.astral.sh/uv/>`_::
 
-    $ uv add django-shared-schema-organizations
+    $ uv add vinta-django-orgs
 
 
-To use Django Shared Schema Organizations in a project, add it to your `INSTALLED_APPS`:
+To use Vinta Django Orgs in a project, add it to your ``INSTALLED_APPS``:
 
 .. code-block:: python
 

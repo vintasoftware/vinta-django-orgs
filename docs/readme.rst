@@ -1,5 +1,5 @@
-==================================
-Django Shared Schema Organizations
-==================================
+=================
+Vinta Django Orgs
+=================
 
 A lib to help in the creation applications with shared schema without suffering

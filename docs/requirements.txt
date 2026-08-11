@@ -1,0 +1,7 @@
+# Documentation build dependencies.
+#
+# This file is the single source of truth for the docs toolchain: Read the Docs
+# installs it (see ../.readthedocs.yaml) and ``make docs`` runs Sphinx with it.
+sphinx>=8.1
+furo>=2024.8.6
+sphinx-copybutton>=0.5.2

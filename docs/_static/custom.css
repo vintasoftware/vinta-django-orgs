@@ -1,0 +1,22 @@
+/* Small refinements on top of Furo's defaults. */
+
+/* Furo ships a single sans stack; using the system UI font instead makes the
+   prose match whatever platform the reader is on, and keeps code monospaced. */
+body {
+    --font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, sans-serif;
+    --font-stack--monospace: "SFMono-Regular", Menlo, Consolas,
+        "Liberation Mono", monospace;
+}
+
+/* Long API signatures wrap instead of forcing the content column to scroll. */
+dt:target,
+.sig {
+    overflow-wrap: break-word;
+}
+
+/* Tables in these pages are mostly setting references; left-aligned headers
+   read better than Furo's default for those. */
+table.docutils th {
+    text-align: left;
+}

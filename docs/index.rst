@@ -1,19 +1,35 @@
-.. complexity documentation master file, created by
-   sphinx-quickstart on Tue Jul  9 22:26:36 2013.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
+=================
+Vinta Django Orgs
+=================
 
-Welcome to Django Shared Schema Organizations's documentation!
-==============================================================
-
-Contents:
+A library for building shared schema, multi-organization Django applications
+without suffering.
 
 .. toctree::
    :maxdepth: 2
+   :caption: Getting started
 
    readme
    installation
    usage
+
+.. toctree::
+   :maxdepth: 2
+   :caption: API reference
+
+   modules
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Project
+
    contributing
    authors
    history
+
+Indices and tables
+==================
+
+* :ref:`genindex`
+* :ref:`modindex`
+* :ref:`search`

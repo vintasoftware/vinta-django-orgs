@@ -1,4 +1,4 @@
-.PHONY: clean clean-pyc clean-build docs help install lock lint typecheck format hooks pre-commit test test-all coverage release dist bench bench-db bench-db-stop
+.PHONY: clean clean-pyc clean-build docs docs-serve help install lock lint typecheck format hooks pre-commit test test-all coverage release dist bench bench-db bench-db-stop
 .DEFAULT_GOAL := help
 define BROWSER_PYSCRIPT
 import os, webbrowser, sys
@@ -72,13 +72,17 @@ coverage: ## check code coverage quickly with the default Python
 	uv run coverage html
 	$(BROWSER) htmlcov/index.html
 
+DOCS_ENV := uv run --with-requirements docs/requirements.txt
+
 docs: ## generate Sphinx HTML documentation, including API docs
-	rm -f docs/django-shared-schema-organizations.rst
-	rm -f docs/modules.rst
-	uv run --with sphinx sphinx-apidoc -o docs/ organizations
-	$(MAKE) -C docs clean
-	$(MAKE) -C docs html
+	rm -f docs/modules.rst docs/organizations*.rst
+	$(DOCS_ENV) sphinx-apidoc -o docs/ organizations organizations/tests organizations/migrations
+	rm -rf docs/_build
+	$(DOCS_ENV) sphinx-build -b html docs docs/_build/html
 	$(BROWSER) docs/_build/html/index.html
+
+docs-serve: ## rebuild the docs on change and serve them at localhost:8000
+	$(DOCS_ENV) --with sphinx-autobuild sphinx-autobuild docs docs/_build/html
 
 dist: clean ## build the sdist and the wheel
 	uv build

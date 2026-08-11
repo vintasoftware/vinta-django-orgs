@@ -5,13 +5,14 @@ Subpackages
 -----------
 
 .. toctree::
+   :maxdepth: 4
 
-    organizations.management.commands
+   organizations.management.commands
 
 Module contents
 ---------------
 
 .. automodule:: organizations.management
-    :members:
-    :undoc-members:
-    :show-inheritance:
+   :members:
+   :show-inheritance:
+   :undoc-members:

@@ -337,6 +337,7 @@ It's a dict where you can replace the serializers to be used in Django Shared Sc
 default value:
 
 .. code:: python
+
     {
         'ORGANIZATION_SERIALIZER': 'organizations.serializers.OrganizationSerializer',
         'ORGANIZATION_SITE_SERIALIZER': 'organizations.serializers.OrganizationSiteSerializer',
