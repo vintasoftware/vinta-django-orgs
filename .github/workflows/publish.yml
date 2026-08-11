@@ -1,0 +1,99 @@
+name: Publish
+
+# Existing tags carry no `v` prefix (0.0.2, 0.0.3, 0.1.0), so the filter matches
+# that shape. `*` never matches `/`, which keeps archive tags such as
+# `legacy/0.1.0-2017` from triggering a release.
+on:
+  push:
+    tags: ["[0-9]*.[0-9]*.[0-9]*"]
+
+jobs:
+  build:
+    name: Build and verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - run: uv build
+
+      # The version is dynamic (hatch reads organizations/__init__.py), so the
+      # tag and the package can disagree — pushing 0.2.0 without bumping the
+      # file would upload an artifact labelled 0.1.0, and PyPI would either
+      # reject it as a duplicate or, worse, accept it under the wrong version.
+      # Compare against the built filenames: that is what actually gets uploaded.
+      - name: Check the tag matches the package version
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [ ! -f "dist/vinta_django_orgs-${tag}.tar.gz" ]; then
+            echo "::error::Tag ${tag} does not match the built distributions:"
+            ls -1 dist
+            echo "::error::Bump __version__ in organizations/__init__.py to ${tag}, or retag."
+            exit 1
+          fi
+          echo "Tag ${tag} matches the built distributions."
+
+      - name: Check the built distributions
+        run: uvx twine check dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    # Gates the upload behind the `pypi` environment, so protection rules (a
+    # required reviewer, a tag allowlist) apply before anything reaches PyPI.
+    environment:
+      name: pypi
+      url: https://pypi.org/project/vinta-django-orgs/
+    permissions:
+      # Mints the short-lived OIDC token that PyPI trusted publishing exchanges
+      # for an upload token. No API token is stored in the repository.
+      id-token: write
+    steps:
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      # `always` rather than the default `automatic`: a misconfigured trusted
+      # publisher should fail the job outright, not fall back to looking for a
+      # token that is not there.
+      - run: uv publish --trusted-publishing always
+
+  attach:
+    name: Attach distributions to the release
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      # The release is created by hand from the HISTORY.rst notes and may not
+      # exist yet when the tag lands, so a missing release is not a failure.
+      - name: Upload the sdist and wheel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/* --clobber
+          else
+            echo "No release for ${tag} yet; skipping upload."
+          fi
