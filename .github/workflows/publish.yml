@@ -6,6 +6,21 @@ name: Publish
 on:
   push:
     tags: ["[0-9]*.[0-9]*.[0-9]*"]
+  # Manual runs cover tags pushed before this workflow existed, and reruns
+  # after a publish fails halfway. Dispatching from the tag itself is not
+  # enough — GitHub reads the workflow file from the chosen ref, so a tag
+  # predating this file cannot run it. Hence an explicit tag input.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to publish (e.g. 0.1.0)"
+        required: true
+        type: string
+
+# `github.ref_name` is the tag on a push, but the branch the run was started
+# from on a dispatch, so every job resolves the tag through this instead.
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   build:
@@ -13,6 +28,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          # A dispatch defaults to the branch head; build the tagged source.
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -28,14 +46,13 @@ jobs:
       # Compare against the built filenames: that is what actually gets uploaded.
       - name: Check the tag matches the package version
         run: |
-          tag="${GITHUB_REF_NAME}"
-          if [ ! -f "dist/vinta_django_orgs-${tag}.tar.gz" ]; then
-            echo "::error::Tag ${tag} does not match the built distributions:"
+          if [ ! -f "dist/vinta_django_orgs-${TAG}.tar.gz" ]; then
+            echo "::error::Tag ${TAG} does not match the built distributions:"
             ls -1 dist
-            echo "::error::Bump __version__ in organizations/__init__.py to ${tag}, or retag."
+            echo "::error::Bump __version__ in organizations/__init__.py to ${TAG}, or retag."
             exit 1
           fi
-          echo "Tag ${tag} matches the built distributions."
+          echo "Tag ${TAG} matches the built distributions."
 
       - name: Check the built distributions
         run: uvx twine check dist/*
@@ -91,9 +108,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          tag="${GITHUB_REF_NAME}"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" dist/* --clobber
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
           else
-            echo "No release for ${tag} yet; skipping upload."
+            echo "No release for ${TAG} yet; skipping upload."
           fi
