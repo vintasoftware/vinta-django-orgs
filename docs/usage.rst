@@ -97,6 +97,50 @@ while iterating:
         print(instance.organization.name)  # no query per row
 
 
+Memberships are not scoped
+--------------------------
+
+``OrganizationMembership`` is the one exception to all of the above: its default
+manager reads every organization.
+
+A membership is metadata *about* the tenancy rather than data inside it. It is
+the table you read to work out which organization to select, so scoping it to
+the organization already selected is circular -- and the queries that need it are
+the ones that run before anything has been selected:
+
+.. code:: python
+
+    # The organization switcher: which organizations may this user select?
+    user.memberships.select_related('organization')
+
+    # Provisioning, immediately after signup
+    create_membership(organization, user)
+
+    # Is this invitation's user already a member?
+    OrganizationMembership.objects.filter(user=user, organization=organization).exists()
+
+This is inherited by the reverse accessors, which is most of the point: Django
+builds ``user.memberships`` and ``organization.memberships`` from the model's
+default manager, so a scoped one carried the scoping into exactly the lookups
+that cannot work under it.
+
+When you do want one organization, say so -- the scoping methods are all still
+there, on the manager and on the reverse accessors alike:
+
+.. code:: python
+
+    user.memberships.for_current_organization()
+    OrganizationMembership.objects.filter_by_organization(organization)
+
+    # Or the implicitly scoped manager, inherited from the mixin
+    OrganizationMembership.organization_objects.all()
+
+**This matters most in permission checks.** Anything that asks "is this user an
+owner?" has to name the organization it means, or it will answer "an owner of
+*something*". The permission classes shipped here narrow with
+``for_current_organization()`` for exactly this reason; check your own.
+
+
 Relations that check the organization
 -------------------------------------
 
