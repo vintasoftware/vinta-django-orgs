@@ -377,7 +377,10 @@ instead: an empty result is hard to tell from "no data yet", and in a task or a
 management command a missing selection is the likelier explanation.
 
 Explicitly scoped reads (``filter_by_organization``, ``unscoped``,
-``original_manager``) are unaffected.
+``original_manager``) are unaffected. So is ``MyModel.objects.none()``: it asks
+for no rows and so cannot return another organization's, which is what makes it
+usable to express a denied read in a view and safe for schema generators to call
+outside any request.
 
 default value: ``False``
 
