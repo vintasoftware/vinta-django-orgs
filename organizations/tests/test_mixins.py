@@ -2,7 +2,7 @@ from typing import Any, cast
 
 from django.contrib.auth.models import User
 from django.db import models
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from model_bakery import baker
 
 from exampleproject.articles.models import Article
@@ -12,6 +12,7 @@ from organizations.helpers.organizations import (
     create_organization,
     set_current_organization,
 )
+from organizations.mixins import get_default_organization
 from organizations.models import OrganizationMembership, OrganizationSite
 
 
@@ -105,6 +106,40 @@ class SingleOrganizationModelMixinSaveTests(TestCase):
         article.save()
 
         self.assertEqual(article.organization, other)
+
+
+@override_settings(SHARED_SCHEMA_ORGANIZATIONS={'DEFAULT_ORGANIZATION_SLUG': None})
+class NoDefaultOrganizationTests(TestCase):
+    """``DEFAULT_ORGANIZATION_SLUG = None`` means "there is no catch-all".
+
+    The setting used to be passed straight into a ``filter()``, so saying "no
+    default" still cost a ``WHERE slug IS NULL`` on every save that had no
+    organization to fall back on.
+    """
+
+    def setUp(self) -> None:
+        self.organization = create_organization(name='organization', slug='organization')
+        self.user: User = baker.make(User)
+        clear_current_organization()
+
+    def test_returns_nothing_without_querying(self) -> None:
+        with self.assertNumQueries(0):
+            self.assertIsNone(get_default_organization())
+
+    def test_save_raises_without_querying_for_a_default(self) -> None:
+        article = Article(title='Test Article', text='Test', author=self.user)
+
+        # ``assertRaises`` inside, so it swallows the exception and
+        # ``assertNumQueries`` still gets to make its assertion on the way out.
+        with self.assertNumQueries(0), self.assertRaises(OrganizationNotFoundError):
+            article.save()
+
+    def test_a_selected_organization_still_wins(self) -> None:
+        set_current_organization(self.organization)
+
+        article = Article.objects.create(title='Test Article', text='Test', author=self.user)
+
+        self.assertEqual(article.organization, self.organization)
 
 
 class OrganizationIndexTests(TestCase):

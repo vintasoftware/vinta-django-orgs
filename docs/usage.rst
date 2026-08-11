@@ -349,6 +349,10 @@ DEFAULT_ORGANIZATION_SLUG
 
 In here you can define you default organization (organization to be use in case the middleware can't retrieve the organization from the request)
 
+Set it to ``None`` when there is no catch-all organization and every row must
+belong to one the caller selected. Saving a scoped model with nothing selected
+then raises ``OrganizationNotFoundError`` without looking a default up first.
+
 default value: ``'default'``
 
 
