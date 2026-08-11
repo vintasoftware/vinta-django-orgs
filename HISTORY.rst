@@ -3,6 +3,23 @@
 History
 -------
 
+0.1.1 (2026-08-11)
+++++++++++++++++++
+
+No library changes. 0.1.0 was tagged and released on GitHub but never uploaded
+to PyPI, so 0.1.1 is what carries the 0.1.0 entries below to PyPI -- upgrading
+from 0.0.3 means reading those. Nothing in ``organizations`` or
+``organizations_custom_data`` differs from 0.1.0.
+
+Internal
+~~~~~~~~
+
+* Pushing a version tag now builds, checks and uploads the release from GitHub
+  Actions, authenticating with PyPI trusted publishing instead of a stored API
+  token. The version is dynamic, so the workflow refuses to upload when the tag
+  and ``__version__`` disagree, and it can be run by hand for a tag pushed
+  before the workflow existed.
+
 0.1.0 (2026-08-11)
 ++++++++++++++++++
 
