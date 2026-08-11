@@ -74,7 +74,33 @@ class SingleOrganizationModelMixin(models.Model):
     class Meta:
         abstract = True
         default_manager_name = 'objects'
-        base_manager_name = 'objects'
+        # Not ``objects``. ``_base_manager`` is the manager Django itself uses
+        # for the operations that must see a row it already knows exists: the
+        # ``UPDATE`` behind ``save()``, ``refresh_from_db()``, the cascade
+        # collector behind ``delete()``, and fetching a forward relation. It is
+        # documented as a manager that must not filter rows away, and pointing
+        # it at the scoped manager broke each of those:
+        #
+        # * ``instance.save()`` on an existing row matched nothing, so Django
+        #   fell through to an ``INSERT`` and raised ``IntegrityError`` on the
+        #   duplicate primary key -- with no organization selected and *without*
+        #   ``STRICT_ORGANIZATION_FILTER``, i.e. on the default settings.
+        # * With ``STRICT_ORGANIZATION_FILTER`` on, all four raised
+        #   ``OrganizationNotFoundError``, including saving an instance that had
+        #   been handed an explicit ``organization``.
+        #
+        # Which of those a project hit depended on the order of its base
+        # classes: ``Options.base_manager`` inherits ``base_manager_name`` from
+        # the first parent in the MRO that has a ``_meta``, so
+        # ``class M(SingleOrganizationModelMixin, TimeStampedModel)`` picked it
+        # up and ``class M(TimeStampedModel, SingleOrganizationModelMixin)`` did
+        # not.
+        #
+        # Reads still scope: ``objects`` is unchanged, and a relation declared
+        # with ``OrganizationSafeForeignKey`` matches on the organization in its
+        # own ``ON`` clause, so cross-organization traversal is prevented by the
+        # join rather than by this manager.
+        base_manager_name = 'original_manager'
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         # ``article_id=5`` names the safe relation, whose column is really
@@ -176,7 +202,10 @@ class MultipleOrganizationsModelMixin(models.Model):
     class Meta:
         abstract = True
         default_manager_name = 'objects'
-        base_manager_name = 'objects'
+        # See ``SingleOrganizationModelMixin.Meta`` -- ``_base_manager`` must
+        # return every row for ``save()``, ``refresh_from_db()``, ``delete()``
+        # and forward relations to work.
+        base_manager_name = 'original_manager'
 
     def save(self, *args: Any, **kwargs: Any) -> None:
         organization = get_current_organization()

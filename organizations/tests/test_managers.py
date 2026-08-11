@@ -1,6 +1,8 @@
+from typing import Any
+
 import django.utils.version
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from model_bakery import baker
 
 from exampleproject.articles.models import Article, Tag
@@ -10,6 +12,7 @@ from organizations.helpers.organizations import (
     create_organization,
     set_current_organization,
 )
+from organizations.models import OrganizationMembership
 
 
 class SingleOrganizationModelManagerTests(TestCase):
@@ -122,3 +125,47 @@ class MultipleOrganizationModelManagerTests(TestCase):
     def test_return_nothing_if_no_organization_set_or_passed(self) -> None:
         clear_current_organization()
         self.assertEqual(self.tags_manager.all().count(), 0)
+
+
+class NoneTests(TestCase):
+    """``objects.none()`` must not need an organization to be selected.
+
+    It asks for no rows, so it cannot leak any -- but it used to go through
+    ``get_queryset()`` like every other generated manager method, and so raised
+    under ``STRICT_ORGANIZATION_FILTER``.
+    """
+
+    # ``OrganizationMembership`` is in here because the library's own model is
+    # the one a project is most likely to call this on outside a request.
+    #
+    # Annotated ``list[Any]`` rather than ``list[type[Model]]`` because these are
+    # read through ``objects``, which ``Model`` itself does not declare.
+    scoped_models: list[Any] = [Article, Tag, OrganizationMembership]
+
+    def setUp(self) -> None:
+        self.organization = create_organization(name='organization', slug='organization')
+        baker.make(Article, organization=self.organization, _quantity=3)
+        clear_current_organization()
+
+    def test_none_is_empty_without_a_selected_organization(self) -> None:
+        for model in self.scoped_models:
+            with self.subTest(model=model.__name__):
+                self.assertEqual(model.objects.none().count(), 0)
+
+    @override_settings(SHARED_SCHEMA_ORGANIZATIONS={'STRICT_ORGANIZATION_FILTER': True})
+    def test_strict_filter_leaves_none_alone(self) -> None:
+        for model in self.scoped_models:
+            with self.subTest(model=model.__name__):
+                self.assertEqual(model.objects.none().count(), 0)
+
+    def test_none_is_empty_with_a_selected_organization(self) -> None:
+        set_current_organization(self.organization)
+
+        self.assertEqual(Article.objects.count(), 3)
+        self.assertEqual(Article.objects.none().count(), 0)
+
+    def test_none_makes_no_queries(self) -> None:
+        # ``QuerySet.none()`` marks the query empty rather than running it, and
+        # taking the unscoped queryset must not change that.
+        with self.assertNumQueries(0):
+            list(Article.objects.none())

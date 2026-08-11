@@ -5,13 +5,14 @@ from django.db import models
 from django.test import TestCase, override_settings
 from model_bakery import baker
 
-from exampleproject.articles.models import Article
+from exampleproject.articles.models import Article, Comment, Tag
 from organizations.exceptions import OrganizationNotFoundError
 from organizations.helpers.organizations import (
     clear_current_organization,
     create_organization,
     set_current_organization,
 )
+from organizations.managers import OrganizationScopedManagerMixin
 from organizations.mixins import get_default_organization
 from organizations.models import OrganizationMembership, OrganizationSite
 
@@ -140,6 +141,88 @@ class NoDefaultOrganizationTests(TestCase):
         article = Article.objects.create(title='Test Article', text='Test', author=self.user)
 
         self.assertEqual(article.organization, self.organization)
+
+
+class BaseManagerTests(TestCase):
+    """``_base_manager`` must return every row, on every scoped model.
+
+    Django uses it for the operations that already know the row exists -- the
+    ``UPDATE`` behind ``save()``, ``refresh_from_db()``, the cascade collector
+    behind ``delete()``, forward relation fetches -- so a scoped one does not
+    hide rows, it breaks those operations. It used to be pointed at ``objects``,
+    and which models inherited that depended on the order of their base classes.
+    """
+
+    scoped_models = [Article, Comment, Tag, OrganizationMembership, OrganizationSite]
+
+    def setUp(self) -> None:
+        self.organization = create_organization(name='organization', slug='organization')
+        self.user: User = baker.make(User)
+        self.article = baker.make(Article, organization=self.organization, author=self.user)
+        clear_current_organization()
+
+    def test_base_manager_is_never_the_scoped_manager(self) -> None:
+        # Covers both ways of inheriting the mixin. ``Options.base_manager``
+        # reads ``base_manager_name`` off the first parent in the MRO that has a
+        # ``_meta``, so ``Article``, which inherits the mixin alone, used to pick
+        # up the scoped manager while ``OrganizationSite``, which lists
+        # ``TimeStampedModel`` first, never saw the attribute at all. The two
+        # still resolve to different classes -- ``original_manager`` and the
+        # plain ``Manager`` Django creates when nothing is inherited -- but
+        # neither scopes, which is the property that matters here.
+        for model in self.scoped_models:
+            with self.subTest(model=model.__name__):
+                self.assertNotIsInstance(model._base_manager, OrganizationScopedManagerMixin)
+
+    def test_base_manager_sees_rows_without_a_selected_organization(self) -> None:
+        self.assertEqual(Article._base_manager.filter(pk=self.article.pk).count(), 1)
+
+    def test_resaving_an_instance_updates_it_instead_of_inserting_a_duplicate(self) -> None:
+        # The ``UPDATE`` goes through ``_base_manager``. Scoped, it matched no
+        # rows, so ``Model._save_table`` decided the row was new and issued an
+        # ``INSERT`` -- which failed on the duplicate primary key.
+        self.article.title = 'changed'
+        self.article.save()
+
+        self.assertEqual(Article.original_manager.count(), 1)
+        self.assertEqual(Article.original_manager.get(pk=self.article.pk).title, 'changed')
+
+    def test_refresh_from_db_finds_the_row(self) -> None:
+        Article.original_manager.filter(pk=self.article.pk).update(title='changed elsewhere')
+
+        self.article.refresh_from_db()
+
+        self.assertEqual(self.article.title, 'changed elsewhere')
+
+    def test_forward_relation_is_reachable(self) -> None:
+        comment = baker.make(Comment, organization=self.organization, article=self.article)
+        comment = Comment.original_manager.get(pk=comment.pk)
+
+        self.assertEqual(comment.article, self.article)
+
+    @override_settings(SHARED_SCHEMA_ORGANIZATIONS={'STRICT_ORGANIZATION_FILTER': True})
+    def test_strict_filter_leaves_an_explicitly_organized_save_alone(self) -> None:
+        article = Article(organization=self.organization, title='Test Article', text='Test', author=self.user)
+
+        article.save()
+
+        self.assertEqual(article.organization, self.organization)
+
+    @override_settings(SHARED_SCHEMA_ORGANIZATIONS={'STRICT_ORGANIZATION_FILTER': True})
+    def test_strict_filter_leaves_resaving_and_refreshing_alone(self) -> None:
+        self.article.title = 'changed'
+        self.article.save()
+        self.article.refresh_from_db()
+
+        self.assertEqual(self.article.title, 'changed')
+
+    @override_settings(SHARED_SCHEMA_ORGANIZATIONS={'STRICT_ORGANIZATION_FILTER': True})
+    def test_strict_filter_leaves_cascade_deletes_alone(self) -> None:
+        # The collector walks the reverse relations through ``_base_manager``,
+        # so it used to raise before it could find anything to delete.
+        self.organization.delete()
+
+        self.assertEqual(Article.original_manager.count(), 0)
 
 
 class OrganizationIndexTests(TestCase):
