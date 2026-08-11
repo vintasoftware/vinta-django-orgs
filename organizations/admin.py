@@ -8,7 +8,8 @@ from django.db.models import QuerySet
 from django.http import HttpRequest
 from django.utils.translation import gettext_lazy as _
 
-from organizations.models import Organization, OrganizationMembership, OrganizationSite
+from organizations.conf import get_organization_membership_model, get_organization_model
+from organizations.models import OrganizationSite
 
 
 class OrganizationSiteForm(forms.ModelForm):
@@ -69,20 +70,24 @@ class OrganizationSiteInLine(admin.StackedInline):
 
 
 class OrganizationAdmin(admin.ModelAdmin):
-    model = Organization
+    model = get_organization_model()
     inlines = [OrganizationSiteInLine]
     prepopulated_fields = {'slug': ('name',)}
 
 
 class OrganizationMembershipAdmin(admin.ModelAdmin):
-    model = OrganizationMembership
+    model = get_organization_membership_model()
 
-    def get_queryset(self, request: HttpRequest) -> QuerySet[OrganizationMembership]:
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         # ``OrganizationMembership.__str__`` reads the user, the organization
         # and every group, which the changelist renders once per row -- three
         # queries per row, so a page of a hundred cost three hundred.
         return super().get_queryset(request).select_related('user', 'organization').prefetch_related('groups')
 
 
-admin.site.register(Organization, OrganizationAdmin)
-admin.site.register(OrganizationMembership, OrganizationMembershipAdmin)
+# Registered against whichever models are configured. A project that swapped
+# either one and wants a different admin for it should unregister first --
+# ``admin.site.register`` refuses a model it already knows, and it refuses a
+# swapped-out one outright.
+admin.site.register(get_organization_model(), OrganizationAdmin)
+admin.site.register(get_organization_membership_model(), OrganizationMembershipAdmin)

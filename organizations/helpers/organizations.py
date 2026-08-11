@@ -27,10 +27,10 @@ def create_organization(
     domains: Iterable[str] | None = None,
     user: AbstractBaseUser | None = None,
 ) -> Organization:
-    from organizations.models import Organization
+    from organizations.conf import get_organization_model
 
     with transaction.atomic():
-        organization = Organization.objects.create(name=name, slug=slug)
+        organization = get_organization_model()._default_manager.create(name=name, slug=slug)
 
         for domain in domains or []:
             site = Site.objects.create(name=name, domain=domain)

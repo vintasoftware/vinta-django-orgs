@@ -66,6 +66,81 @@ make your model inherit from ``SingleOrganizationModelMixin`` or
     # prints only the instance with 'test other organization' in field1
 
 
+Using your own organization model
+---------------------------------
+
+``Organization`` and ``OrganizationMembership`` are swappable, the way
+``auth.User`` is. When you need a field on either -- a parent organization, a
+reseller flag, a deactivated-member marker -- declare your own model on the
+matching abstract base instead of hanging a one-to-one companion off the one
+shipped here:
+
+.. code:: python
+
+    # tenancy/models.py
+    from django.db import models
+
+    from organizations.models import AbstractOrganization, AbstractOrganizationMembership
+
+    class Organization(AbstractOrganization):
+        parent = models.ForeignKey('self', null=True, blank=True,
+                                   related_name='children', on_delete=models.PROTECT)
+        can_invite_organizations = models.BooleanField(default=False)
+
+        class Meta(AbstractOrganization.Meta):
+            constraints = [
+                models.UniqueConstraint(fields=['parent', 'name'],
+                                        name='uniq_organization_name_per_parent'),
+            ]
+
+    class OrganizationMembership(AbstractOrganizationMembership):
+        is_active = models.BooleanField(default=True)
+
+.. code:: python
+
+    # settings.py
+    ORGANIZATION_MODEL = 'tenancy.Organization'
+    ORGANIZATION_MEMBERSHIP_MODEL = 'tenancy.OrganizationMembership'
+
+The abstract bases carry ``name``, ``slug`` and the timestamps; the membership
+base carries the organization, the user, the groups and the permissions. Your
+subclass adds fields and nothing else is required of it.
+
+Both settings are ordinary top-level Django settings rather than keys inside
+``SHARED_SCHEMA_ORGANIZATIONS``, because Django's own ``Meta.swappable``
+machinery reads them with a plain ``getattr(settings, ...)``. Both default to the
+models in this app, so a project that does not need this never mentions them.
+
+Reach for the configured model through the helpers, never by importing
+``Organization``:
+
+.. code:: python
+
+    from organizations.conf import get_organization_model, get_organization_membership_model
+
+    Organization = get_organization_model()
+    OrganizationMembership = get_organization_membership_model()
+
+For a foreign key of your own, point at the setting so it follows the swap:
+
+.. code:: python
+
+    from django.conf import settings
+
+    class Invoice(SingleOrganizationModelMixin):
+        billed_to = models.ForeignKey(settings.ORGANIZATION_MODEL, on_delete=models.PROTECT)
+
+**Decide before your first migration.** This has the same sharp edge as
+``AUTH_USER_MODEL``: swapping after tables exist means migrating data between
+them by hand, because every organization-scoped table in the project has a
+foreign key pointing at the old one. Swapping on a greenfield project costs
+nothing.
+
+A project that swaps a model and wants its own admin for it should
+``admin.site.unregister(...)`` first -- this app registers whichever models are
+configured.
+
+
 Querying other organizations
 ----------------------------
 
@@ -398,6 +473,22 @@ belong to one the caller selected. Saving a scoped model with nothing selected
 then raises ``OrganizationNotFoundError`` without looking a default up first.
 
 default value: ``'default'``
+
+
+DEFAULT_ORGANIZATION_OWNER_PERMISSIONS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The permissions ``create_default_organization_groups()`` puts in the
+``organization_owner`` group.
+
+The default is derived from the configured models rather than hardcoded, so it
+follows ``ORGANIZATION_MODEL`` and ``ORGANIZATION_MEMBERSHIP_MODEL``: add,
+change and delete on the organization, the membership and ``OrganizationSite``.
+A permission that does not exist is skipped silently when the group is built, so
+a hardcoded list naming the wrong app label produced an empty owner group and a
+403 on every organization endpoint.
+
+default value: derived, e.g. ``['organizations.add_organization', ...]``
 
 
 DEFAULT_SITE_DOMAIN

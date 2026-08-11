@@ -38,9 +38,9 @@ _current_organization: ContextVar[Organization | None] = ContextVar('organizatio
 
 
 def _get_organization_by_slug(slug: str) -> Organization | None:
-    from organizations.models import Organization
+    from organizations.conf import get_organization_model
 
-    return Organization.objects.filter(slug=slug).first()
+    return get_organization_model()._default_manager.filter(slug=slug).first()
 
 
 def _coerce_organization(organization: OrganizationOrSlug | None) -> Organization | None:

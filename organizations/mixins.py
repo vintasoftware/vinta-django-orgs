@@ -6,6 +6,7 @@ from django.db import models
 from django.db.models.signals import class_prepared
 from django.dispatch import receiver
 
+from organizations.conf import get_organization_model, organization_model_string
 from organizations.exceptions import OrganizationNotFoundError
 from organizations.fields import expand_safe_relation_field_names, rewrite_safe_relation_kwargs
 from organizations.helpers.organizations import get_current_organization
@@ -22,8 +23,6 @@ if TYPE_CHECKING:
 
 
 def get_default_organization() -> Organization | None:
-    from organizations.models import Organization
-
     slug = get_setting('DEFAULT_ORGANIZATION_SLUG')
 
     # ``DEFAULT_ORGANIZATION_SLUG = None`` is how a project says it has no
@@ -35,12 +34,18 @@ def get_default_organization() -> Organization | None:
     if not slug:
         return None
 
-    return Organization.objects.filter(slug=slug).first()
+    # ``_default_manager`` rather than ``objects``: the model is whatever
+    # ``ORGANIZATION_MODEL`` names, and a project is free to call its manager
+    # something else.
+    return get_organization_model()._default_manager.filter(slug=slug).first()
 
 
 class SingleOrganizationModelMixin(models.Model):
     organization = models.ForeignKey(
-        'organizations.Organization',
+        # Resolved once, at class-definition time, from ``ORGANIZATION_MODEL`` --
+        # so a project that swapped the organization model gets foreign keys to
+        # *its* table on every scoped model, its own included.
+        organization_model_string(),
         on_delete=models.CASCADE,
         # No ``default=``. A callable default is evaluated in ``Model.__init__``
         # for every instantiation that does not pass ``organization=``, so
@@ -192,7 +197,9 @@ def add_organization_index(sender: type[models.Model], **kwargs: Any) -> None:
 
 
 class MultipleOrganizationsModelMixin(models.Model):
-    organizations = models.ManyToManyField('organizations.Organization')
+    # Annotated explicitly: the target is a runtime call rather than a literal,
+    # so the type checker cannot infer what this relates to.
+    organizations: models.ManyToManyField[Organization, Any] = models.ManyToManyField(organization_model_string())
 
     objects = MultipleOrganizationModelManager()
 

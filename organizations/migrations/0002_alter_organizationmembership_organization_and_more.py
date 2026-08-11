@@ -8,6 +8,8 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
+
+        migrations.swappable_dependency(settings.ORGANIZATION_MODEL),
         ("auth", "0012_alter_user_first_name_max_length"),
         ("organizations", "0001_initial"),
         ("sites", "0002_alter_domain_unique"),
@@ -22,7 +24,7 @@ class Migration(migrations.Migration):
                 db_index=False,
                 on_delete=django.db.models.deletion.CASCADE,
                 related_name="memberships",
-                to="organizations.organization",
+                to=settings.ORGANIZATION_MODEL,
             ),
         ),
         migrations.AlterField(
@@ -32,7 +34,7 @@ class Migration(migrations.Migration):
                 db_index=False,
                 on_delete=django.db.models.deletion.CASCADE,
                 related_name="organization_sites",
-                to="organizations.organization",
+                to=settings.ORGANIZATION_MODEL,
             ),
         ),
         migrations.AddIndex(

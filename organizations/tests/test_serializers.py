@@ -7,14 +7,27 @@ test_serializers
 Tests for `django-shared-schema-organizations` serializers module.
 """
 
+from typing import TYPE_CHECKING
+
 from django.contrib.auth.models import User
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from model_bakery import baker
 
+from organizations.conf import get_organization_model
 from organizations.helpers.organizations import set_current_organization
-from organizations.models import Organization, OrganizationSite
+from organizations.models import OrganizationSite
 from organizations.serializers import OrganizationSerializer, OrganizationSiteSerializer
+
+# Resolved at runtime, so this module exercises whichever model
+# ``ORGANIZATION_MODEL`` names -- the concrete one by default, the test project's
+# own under ``tests.settings_swapped``. Type checking always runs against the
+# default settings module, so it is shown the concrete model and every lookup
+# below keeps the precise type it had.
+if TYPE_CHECKING:
+    from organizations.models import Organization
+else:
+    Organization = get_organization_model()
 
 
 class OrganizationSerializerTests(TestCase):

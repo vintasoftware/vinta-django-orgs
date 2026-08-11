@@ -3,12 +3,15 @@
 import django.db.models.deletion
 import organizations.fields
 import organizations.mixins
+from django.conf import settings
 from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
 
     dependencies = [
+
+        migrations.swappable_dependency(settings.ORGANIZATION_MODEL),
         ("articles", "0001_initial"),
         ("organizations", "0001_initial"),
     ]
@@ -52,7 +55,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         default=organizations.mixins.get_default_organization,
                         on_delete=django.db.models.deletion.CASCADE,
-                        to="organizations.organization",
+                        to=settings.ORGANIZATION_MODEL,
                     ),
                 ),
             ],
@@ -99,7 +102,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         default=organizations.mixins.get_default_organization,
                         on_delete=django.db.models.deletion.CASCADE,
-                        to="organizations.organization",
+                        to=settings.ORGANIZATION_MODEL,
                     ),
                 ),
             ],

@@ -7,15 +7,30 @@ test_models
 Tests for `django-shared-schema-organizations` models module.
 """
 
+from typing import TYPE_CHECKING
+
 from django.contrib.auth.models import User
 from django.contrib.sites.models import Site
 from django.test import TestCase, override_settings
 
+from organizations.conf import get_organization_membership_model, get_organization_model
 from organizations.exceptions import OrganizationNotFoundError
 from organizations.managers import OrganizationScopedManagerMixin
 from organizations.middleware import OrganizationMiddleware
-from organizations.models import Organization, OrganizationMembership, OrganizationSite
+from organizations.models import OrganizationSite
 from organizations.state import clear_current_organization, organization_context, set_current_organization
+
+# Resolved at runtime, so this module exercises whichever models
+# ``ORGANIZATION_MODEL`` and ``ORGANIZATION_MEMBERSHIP_MODEL`` name -- the
+# concrete ones by default, the test project's own under
+# ``tests.settings_swapped``. Type checking always runs against the default
+# settings module, so it is shown the concrete models and every lookup below
+# keeps the precise type it had.
+if TYPE_CHECKING:
+    from organizations.models import Organization, OrganizationMembership
+else:
+    Organization = get_organization_model()
+    OrganizationMembership = get_organization_membership_model()
 
 
 class OrganizationTests(TestCase):

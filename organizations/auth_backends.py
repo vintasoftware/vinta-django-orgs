@@ -8,13 +8,13 @@ from django.contrib.auth.backends import ModelBackend
 from django.contrib.auth.models import Permission
 from django.db.models import Q, QuerySet
 
+from organizations.conf import get_organization_membership_model
 from organizations.helpers.organizations import get_current_organization
-from organizations.models import OrganizationMembership
 
 if TYPE_CHECKING:
     from django.db.models import Model
 
-    from organizations.models import Organization
+    from organizations.models import Organization, OrganizationMembership
 
 
 class AnyUser(Protocol):
@@ -64,12 +64,12 @@ class OrganizationModelBackend(ModelBackend):
         return membership.permissions.all()
 
     def _get_group_organization_permissions(self, membership: OrganizationMembership) -> QuerySet[Permission]:
-        membership_groups_field = OrganizationMembership._meta.get_field('groups')
+        membership_groups_field = membership._meta.get_field('groups')
         membership_groups_query = 'group__%s' % membership_groups_field.related_query_name()
         return Permission.objects.filter(**{membership_groups_query: membership})
 
     def _get_user_permissions(self, membership: OrganizationMembership) -> QuerySet[Permission]:
-        membership_permissions_field = OrganizationMembership._meta.get_field('permissions')
+        membership_permissions_field = membership._meta.get_field('permissions')
         membership_permission_query = membership_permissions_field.related_query_name()
 
         user_permissions_field = UserModel._meta.get_field('user_permissions')
@@ -84,7 +84,7 @@ class OrganizationModelBackend(ModelBackend):
         ).distinct()
 
     def _get_group_permissions(self, membership: OrganizationMembership) -> QuerySet[Permission]:
-        membership_groups_field = OrganizationMembership._meta.get_field('groups')
+        membership_groups_field = membership._meta.get_field('groups')
         membership_groups_query = 'group__%s' % membership_groups_field.related_query_name()
         user_groups_field = get_user_model()._meta.get_field('groups')
         user_groups_query = 'group__%s' % user_groups_field.related_query_name()
@@ -119,7 +119,10 @@ class OrganizationModelBackend(ModelBackend):
 
         if organization.pk not in cache:
             cache[organization.pk] = (
-                OrganizationMembership.objects.filter_by_organization(organization).filter(user=user_obj).first()
+                get_organization_membership_model()
+                ._default_manager.filter_by_organization(organization)
+                .filter(user=user_obj)
+                .first()
             )
 
         membership: OrganizationMembership | None = cache[organization.pk]

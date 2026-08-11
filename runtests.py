@@ -10,7 +10,11 @@ from django.test.utils import get_runner
 
 
 def run_tests(*args: str, **kwargs: Any) -> None:
-    os.environ['DJANGO_SETTINGS_MODULE'] = 'tests.settings'
+    # ``--settings=tests.settings_swapped`` runs the same suite against a project
+    # that replaced the organization and membership models. Falls back to the
+    # environment, then to the defaults, so plain ``runtests.py`` is unchanged.
+    settings_module = kwargs.pop('settings', None) or os.environ.get('DJANGO_SETTINGS_MODULE') or 'tests.settings'
+    os.environ['DJANGO_SETTINGS_MODULE'] = str(settings_module)
     django.setup()
     TestRunner = get_runner(settings)
     test_runner = TestRunner(**kwargs)

@@ -7,10 +7,10 @@ from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.auth.models import Group, Permission
 from django.db import transaction
 
-from organizations.models import OrganizationMembership
+from organizations.conf import get_organization_membership_model
 
 if TYPE_CHECKING:
-    from organizations.models import Organization
+    from organizations.models import Organization, OrganizationMembership
 
 
 def create_membership(
@@ -25,7 +25,9 @@ def create_membership(
     with transaction.atomic():
         # ``cast`` because ``AUTH_USER_MODEL`` is the project's choice, while the
         # type checker only sees the one this repository's settings point at.
-        membership = OrganizationMembership.objects.create(user=cast('Any', user), organization=organization)
+        membership = get_organization_membership_model()._default_manager.create(
+            user=cast('Any', user), organization=organization
+        )
         for group in groups:
             membership.groups.add(group)
         for perm in permissions:

@@ -1,4 +1,6 @@
-from typing import cast
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, cast
 
 from django.contrib.sites.models import Site
 from django.contrib.sites.shortcuts import get_current_site
@@ -9,9 +11,13 @@ from organizations.cache import (
     get_cached_organization_for_site,
     set_cached_organization_for_site,
 )
+from organizations.conf import get_organization_model
 from organizations.exceptions import OrganizationNotFoundError
-from organizations.models import Organization, OrganizationSite
+from organizations.models import OrganizationSite
 from organizations.settings import get_setting
+
+if TYPE_CHECKING:
+    from organizations.models import Organization
 
 
 def retrieve_by_domain(request: HttpRequest) -> Organization | None:
@@ -50,17 +56,21 @@ def retrieve_by_domain(request: HttpRequest) -> Organization | None:
 
 
 def retrieve_by_http_header(request: HttpRequest) -> Organization | None:
+    organization_model = get_organization_model()
+
     try:
         organization_http_header = 'HTTP_' + get_setting('ORGANIZATION_HTTP_HEADER').replace('-', '_').upper()
-        return Organization.objects.get(slug=request.META[organization_http_header])
+        return organization_model._default_manager.get(slug=request.META[organization_http_header])
     except LookupError:
         return None
-    except Organization.DoesNotExist as exc:
+    except organization_model.DoesNotExist as exc:
         raise OrganizationNotFoundError() from exc
 
 
 def retrieve_by_session(request: HttpRequest) -> Organization | None:
+    organization_model = get_organization_model()
+
     try:
-        return Organization.objects.get(slug=request.session['organization_slug'])
-    except (AttributeError, LookupError, Organization.DoesNotExist):
+        return organization_model._default_manager.get(slug=request.session['organization_slug'])
+    except (AttributeError, LookupError, organization_model.DoesNotExist):
         return None

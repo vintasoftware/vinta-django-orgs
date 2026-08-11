@@ -28,6 +28,7 @@ from django.core.cache import caches
 from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 
+from organizations.conf import organization_model_string
 from organizations.settings import get_setting
 
 if TYPE_CHECKING:
@@ -59,16 +60,19 @@ def _dump(organization: Organization) -> dict[str, Any]:
 
 
 def _load(values: dict[str, Any]) -> Organization | None:
-    from organizations.models import Organization
+    from organizations.conf import get_organization_model
 
-    field_names = {field.attname for field in Organization._meta.concrete_fields}
+    organization_model = get_organization_model()
+    field_names = {field.attname for field in organization_model._meta.concrete_fields}
 
     # A column list that no longer matches the model means the cache outlived a
-    # migration. Treated as a miss rather than reconstructed half-populated.
+    # migration -- or a deploy that swapped ``ORGANIZATION_MODEL`` for one with
+    # different columns. Treated as a miss rather than reconstructed
+    # half-populated.
     if set(values) != field_names:
         return None
 
-    organization = Organization(**values)
+    organization = organization_model(**values)
     organization._state.adding = False
     return organization
 
@@ -107,8 +111,11 @@ def _forget_organization_site(sender: Any, instance: Any, **kwargs: Any) -> None
     forget_site(instance.site_id)
 
 
-@receiver(post_save, sender='organizations.Organization')
-@receiver(post_delete, sender='organizations.Organization')
+# Connected by name to the *configured* model rather than to the class shipped
+# here: a project that swapped ``ORGANIZATION_MODEL`` writes rows of its own
+# model, and a receiver bound to this app's would simply never fire.
+@receiver(post_save, sender=organization_model_string())
+@receiver(post_delete, sender=organization_model_string())
 def _forget_organization(sender: Any, instance: Any, **kwargs: Any) -> None:
     """Drop every site that pointed at this organization.
 
