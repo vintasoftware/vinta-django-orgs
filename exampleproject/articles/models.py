@@ -1,8 +1,8 @@
 from django.conf import settings
 from django.db import models
 
-from organizations.fields import OrganizationSafeForeignKey, OrganizationSafeOneToOneField
-from organizations.mixins import MultipleOrganizationsModelMixin, SingleOrganizationModelMixin
+from vinta_orgs.fields import OrganizationSafeForeignKey, OrganizationSafeOneToOneField
+from vinta_orgs.mixins import MultipleOrganizationsModelMixin, SingleOrganizationModelMixin
 
 
 class Article(SingleOrganizationModelMixin):

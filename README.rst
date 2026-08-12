@@ -31,7 +31,7 @@ Add it to your `INSTALLED_APPS`:
 
     INSTALLED_APPS = (
         ...
-        'organizations.apps.OrganizationsConfig',
+        'vinta_orgs.apps.OrganizationsConfig',
         ...
     )
 
@@ -44,7 +44,7 @@ Add Django Shared Schema Organizations's URL patterns:
 
     urlpatterns = [
         ...
-        path('', include('organizations.urls')),
+        path('', include('vinta_orgs.urls')),
         ...
     ]
 
@@ -55,7 +55,7 @@ Add OrganizationMiddleware to your `MIDDLEWARES`:
 
     MIDDLEWARES = [
         # ...
-        'organizations.middleware.OrganizationMiddleware',
+        'vinta_orgs.middleware.OrganizationMiddleware',
         # ...
     ]
 

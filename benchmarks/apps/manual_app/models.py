@@ -1,6 +1,6 @@
 """The same domain with a hand-written tenant column and no library.
 
-The tenant key mirrors ``organizations.Organization``: an implicit integer
+The tenant key mirrors ``vinta_orgs.Organization``: an implicit integer
 primary key with the slug as a unique field. Keying this differently would
 measure the key type as much as the approach.
 """

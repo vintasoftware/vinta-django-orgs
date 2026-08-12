@@ -1,7 +1,7 @@
-organizations
-=============
+vinta_orgs
+==========
 
 .. toctree::
    :maxdepth: 4
 
-   organizations
+   vinta_orgs

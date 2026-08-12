@@ -21,6 +21,6 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/articles/', include('articles.urls', namespace='articles')),
     path('api/lectures/', include('lectures.urls', namespace='lectures')),
-    path('', include('organizations.urls')),
-    path('', include('organizations_custom_data.urls')),
+    path('', include('vinta_orgs.urls')),
+    path('', include('vinta_orgs_custom_data.urls')),
 ]

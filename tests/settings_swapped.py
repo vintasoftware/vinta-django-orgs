@@ -19,14 +19,14 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'rest_framework',
-    'organizations.apps.OrganizationsConfig',
+    'vinta_orgs.apps.OrganizationsConfig',
     # Listed before the apps whose foreign keys point at it. Not strictly
     # required -- migrations carry the dependency -- but it keeps the ordering
     # obvious.
     'exampleproject.customorgs.apps.CustomOrgsConfig',
     'exampleproject.articles',
     'exampleproject.lectures',
-    'organizations_custom_data.apps.OrganizationsCustomDataConfig',
+    'vinta_orgs_custom_data.apps.OrganizationsCustomDataConfig',
 ]
 
 ORGANIZATION_MODEL = 'customorgs.Organization'

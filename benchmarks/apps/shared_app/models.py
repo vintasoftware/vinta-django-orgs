@@ -9,8 +9,8 @@ the JOIN's ON clause against the relation that does not have it.
 
 from django.db import models
 
-from organizations.fields import OrganizationSafeForeignKey
-from organizations.mixins import SingleOrganizationModelMixin
+from vinta_orgs.fields import OrganizationSafeForeignKey
+from vinta_orgs.mixins import SingleOrganizationModelMixin
 
 
 class Author(SingleOrganizationModelMixin):

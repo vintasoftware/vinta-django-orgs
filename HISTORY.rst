@@ -3,13 +3,42 @@
 History
 -------
 
+Unreleased
+++++++++++
+
+Breaking
+~~~~~~~~
+
+* Both apps are renamed: ``organizations`` is now ``vinta_orgs``, and
+  ``organizations_custom_data`` is now ``vinta_orgs_custom_data``. The old names
+  are ordinary enough that a project is likely to want them for an app of its
+  own, and two apps cannot share a label. Nothing is kept under the old names:
+  update ``INSTALLED_APPS`` (``vinta_orgs.apps.OrganizationsConfig``,
+  ``vinta_orgs_custom_data.apps.OrganizationsCustomDataConfig``), the middleware
+  and authentication backend paths, every import, the URL namespaces
+  (``vinta_orgs:organization_list`` and friends), permission strings such as
+  ``vinta_orgs.change_organization``, and ``ORGANIZATION_MODEL`` /
+  ``ORGANIZATION_MEMBERSHIP_MODEL`` if they pointed at the shipped models
+  (``vinta_orgs.Organization``, ``vinta_orgs.OrganizationMembership``).
+
+Migrations
+~~~~~~~~~~
+
+* Each app's migrations are collapsed into a single ``0001_initial`` under its
+  new label. The label is what names the tables, so they are created as
+  ``vinta_orgs_organization``, ``vinta_orgs_custom_data_...`` and so on rather
+  than ``organizations_*``. Nothing migrates the old tables across -- 0.1.1 was
+  on PyPI for a day and this is a rename, not a data change -- so a project that
+  installed it drops those tables and migrates from scratch.
+
 0.1.1 (2026-08-11)
 ++++++++++++++++++
 
 No library changes. 0.1.0 was tagged and released on GitHub but never uploaded
 to PyPI, so 0.1.1 is what carries the 0.1.0 entries below to PyPI -- upgrading
-from 0.0.3 means reading those. Nothing in ``organizations`` or
-``organizations_custom_data`` differs from 0.1.0.
+from 0.0.3 means reading those. Nothing in the two apps -- named
+``organizations`` and ``organizations_custom_data`` at the time, and renamed in
+the entry above -- differs from 0.1.0.
 
 Internal
 ~~~~~~~~
@@ -55,7 +84,7 @@ Added
       ORGANIZATION_MEMBERSHIP_MODEL = 'tenancy.OrganizationMembership'
 
   Both settings default to the models shipped here, so existing projects need
-  no changes. Resolve them with ``organizations.conf.get_organization_model()``
+  no changes. Resolve them with ``vinta_orgs.conf.get_organization_model()``
   and ``get_organization_membership_model()`` rather than importing the classes.
 
   Decide before your first migration -- like ``AUTH_USER_MODEL``, swapping after

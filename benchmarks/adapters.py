@@ -103,7 +103,7 @@ class SharedAdapter(BaseAdapter):
     def __init__(self):
         super().__init__()
         from benchmarks.apps.shared_app.models import Article, Author, Comment
-        from organizations.models import Organization
+        from vinta_orgs.models import Organization
 
         self.Organization = Organization
         self.Author = Author
@@ -180,7 +180,7 @@ class SharedAdapter(BaseAdapter):
 
     @contextmanager
     def bind(self, tenant):
-        from organizations.state import organization_context
+        from vinta_orgs.state import organization_context
 
         with organization_context(self._organization(tenant)):
             self.current = tenant
@@ -266,7 +266,7 @@ class ManualAdapter(BaseAdapter):
         """Resolve a slug to its tenant row.
 
         Scenarios identify tenants by slug, but the column is an integer
-        foreign key -- as ``organizations.Organization`` now is, so that the
+        foreign key -- as ``vinta_orgs.Organization`` now is, so that the
         control is not carrying a wider key than the library it controls for.
         """
         if slug not in self._tenants:

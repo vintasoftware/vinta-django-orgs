@@ -262,7 +262,7 @@ Django's automatic single-column index on the foreign key is a prefix of the
 
 Now: `organization` carries `db_index=False`, and every scoped model is given
 an `(organization, pk)` index automatically (`add_organization_index` in
-`organizations/mixins.py`). As the section above records, this fixes the paged
+`vinta_orgs/mixins.py`). As the section above records, this fixes the paged
 join at 25 tenants but is outgrown by the estimate problem by 100.
 
 ### 3. A `varchar(255)` tenant key (fixed)

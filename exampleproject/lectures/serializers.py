@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from organizations_custom_data.serializers import OrganizationSpecificModelSerializer
+from vinta_orgs_custom_data.serializers import OrganizationSpecificModelSerializer
 
 from .models import Lecture
 

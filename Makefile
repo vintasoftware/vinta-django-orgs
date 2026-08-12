@@ -67,7 +67,7 @@ bench: ## compare query performance against django-tenants (needs bench-db)
 	uv run --group bench python -m benchmarks.run
 
 coverage: ## check code coverage quickly with the default Python
-	uv run coverage run --source organizations,organizations_custom_data runtests.py
+	uv run coverage run --source vinta_orgs,vinta_orgs_custom_data runtests.py
 	uv run coverage report -m
 	uv run coverage html
 	$(BROWSER) htmlcov/index.html
@@ -75,8 +75,8 @@ coverage: ## check code coverage quickly with the default Python
 DOCS_ENV := uv run --with-requirements docs/requirements.txt
 
 docs: ## generate Sphinx HTML documentation, including API docs
-	rm -f docs/modules.rst docs/organizations*.rst
-	$(DOCS_ENV) sphinx-apidoc -o docs/ organizations organizations/tests organizations/migrations
+	rm -f docs/modules.rst docs/vinta_orgs*.rst
+	$(DOCS_ENV) sphinx-apidoc -o docs/ vinta_orgs vinta_orgs/tests vinta_orgs/migrations
 	rm -rf docs/_build
 	$(DOCS_ENV) sphinx-build -b html docs docs/_build/html
 	$(BROWSER) docs/_build/html/index.html

@@ -13,7 +13,7 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.auth',
     'django.contrib.sites',
-    'organizations.apps.OrganizationsConfig',
+    'vinta_orgs.apps.OrganizationsConfig',
     'benchmarks.apps.shared_app',
 ]
 

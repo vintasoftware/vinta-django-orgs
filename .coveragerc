@@ -8,13 +8,13 @@ omit =
     *migrations*
     *.tox
     exampleproject/*
-    organizations/urls.py
-    organizations/admin.py
-    organizations/apps.py
-    organizations/management/**/*.py
-    organizations_custom_data/urls.py
-    organizations_custom_data/admin.py
-    organizations_custom_data/apps.py
+    vinta_orgs/urls.py
+    vinta_orgs/admin.py
+    vinta_orgs/apps.py
+    vinta_orgs/management/**/*.py
+    vinta_orgs_custom_data/urls.py
+    vinta_orgs_custom_data/admin.py
+    vinta_orgs_custom_data/apps.py
 show_missing = True
 exclude_lines =
     raise NotImplementedError
