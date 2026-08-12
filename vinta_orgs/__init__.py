@@ -1,5 +1,5 @@
 __title__ = 'Vinta Django Orgs'
-__version__ = '0.1.1'
+__version__ = '0.2.0'
 __author__ = 'Hugo Bessa'
 __license__ = 'MIT License'
 __copyright__ = 'Copyright Vinta Software'
