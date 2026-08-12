@@ -15,7 +15,7 @@ import django  # noqa: E402
 
 django.setup()
 
-import organizations  # noqa: E402
+import vinta_orgs  # noqa: E402
 
 # -- Project information -------------------------------------------------------
 
@@ -23,8 +23,8 @@ project = 'Vinta Django Orgs'
 copyright = '2026, Vinta Software'
 author = 'Vinta Software'
 
-version = organizations.__version__
-release = organizations.__version__
+version = vinta_orgs.__version__
+release = vinta_orgs.__version__
 
 # -- General configuration -----------------------------------------------------
 

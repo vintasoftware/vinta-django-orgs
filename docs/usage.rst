@@ -11,7 +11,7 @@ To use Django Shared Schema Organizations in a project, add it to your `INSTALLE
 
     INSTALLED_APPS = (
         ...
-        'organizations.apps.OrganizationsConfig',
+        'vinta_orgs.apps.OrganizationsConfig',
         ...
     )
 
@@ -19,12 +19,12 @@ Add Django Shared Schema Organizations's URL patterns:
 
 .. code-block:: python
 
-    from organizations import urls as organizations_urls
+    from vinta_orgs import urls as vinta_orgs_urls
 
 
     urlpatterns = [
         ...
-        url(r'^', include(organizations_urls)),
+        url(r'^', include(vinta_orgs_urls)),
         ...
     ]
 
@@ -44,7 +44,7 @@ make your model inherit from ``SingleOrganizationModelMixin`` or
 
 .. code:: python
 
-    from organizations.mixins import SingleOrganizationModelMixin, MultipleOrganizationsModel
+    from vinta_orgs.mixins import SingleOrganizationModelMixin, MultipleOrganizationsModel
 
     class MyModelA(SingleOrganizationModelMixin)
         field1 = models.CharField(max_length=100)
@@ -80,7 +80,7 @@ shipped here:
     # tenancy/models.py
     from django.db import models
 
-    from organizations.models import AbstractOrganization, AbstractOrganizationMembership
+    from vinta_orgs.models import AbstractOrganization, AbstractOrganizationMembership
 
     class Organization(AbstractOrganization):
         parent = models.ForeignKey('self', null=True, blank=True,
@@ -116,7 +116,7 @@ Reach for the configured model through the helpers, never by importing
 
 .. code:: python
 
-    from organizations.conf import get_organization_model, get_organization_membership_model
+    from vinta_orgs.conf import get_organization_model, get_organization_membership_model
 
     Organization = get_organization_model()
     OrganizationMembership = get_organization_membership_model()
@@ -230,8 +230,8 @@ organization into the JOIN's ON clause:
 
 .. code:: python
 
-    from organizations.fields import OrganizationSafeForeignKey
-    from organizations.mixins import SingleOrganizationModelMixin
+    from vinta_orgs.fields import OrganizationSafeForeignKey
+    from vinta_orgs.mixins import SingleOrganizationModelMixin
 
     class Comment(SingleOrganizationModelMixin):
         article = OrganizationSafeForeignKey(Article, on_delete=models.CASCADE,
@@ -381,7 +381,7 @@ whatever was selected before when it exits (including when the block raises):
 
 .. code:: python
 
-    from organizations.helpers import organization_context
+    from vinta_orgs.helpers import organization_context
 
     from .models import MyModel
 
@@ -401,7 +401,7 @@ a bare ``set_current_organization`` stays in effect for the rest of the thread
 
 .. code:: python
 
-    from organizations.helpers import clear_current_organization, set_current_organization
+    from vinta_orgs.helpers import clear_current_organization, set_current_organization
 
     set_current_organization('default')
     # ...
@@ -431,7 +431,7 @@ From ``get_current_organization`` helper
 
 .. code:: python
 
-    from organizations.helpers import get_current_organization
+    from vinta_orgs.helpers import get_current_organization
 
     def my_view(request):
         current_organization = get_current_organization()
@@ -458,8 +458,8 @@ default value:
 .. code:: python
 
     {
-        'ORGANIZATION_SERIALIZER': 'organizations.serializers.OrganizationSerializer',
-        'ORGANIZATION_SITE_SERIALIZER': 'organizations.serializers.OrganizationSiteSerializer',
+        'ORGANIZATION_SERIALIZER': 'vinta_orgs.serializers.OrganizationSerializer',
+        'ORGANIZATION_SITE_SERIALIZER': 'vinta_orgs.serializers.OrganizationSiteSerializer',
         'ORGANIZATION_MEMBERSHIP_SERIALIZER': None,
     }
 
@@ -488,7 +488,7 @@ A permission that does not exist is skipped silently when the group is built, so
 a hardcoded list naming the wrong app label produced an empty owner group and a
 403 on every organization endpoint.
 
-default value: derived, e.g. ``['organizations.add_organization', ...]``
+default value: derived, e.g. ``['vinta_orgs.add_organization', ...]``
 
 
 DEFAULT_SITE_DOMAIN

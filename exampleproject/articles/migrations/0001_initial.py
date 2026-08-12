@@ -5,7 +5,7 @@ from __future__ import unicode_literals
 from django.conf import settings
 from django.db import migrations, models
 import django.db.models.deletion
-import organizations.mixins
+import vinta_orgs.mixins
 
 
 class Migration(migrations.Migration):
@@ -15,7 +15,7 @@ class Migration(migrations.Migration):
     dependencies = [
 
         migrations.swappable_dependency(settings.ORGANIZATION_MODEL),
-        ('organizations', '0001_initial'),
+        ('vinta_orgs', '0001_initial'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
@@ -55,7 +55,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='article',
             name='organization',
-            field=models.ForeignKey(default=organizations.mixins.get_default_organization,
+            field=models.ForeignKey(default=vinta_orgs.mixins.get_default_organization,
                                     on_delete=django.db.models.deletion.CASCADE, to=settings.ORGANIZATION_MODEL),
         ),
     ]

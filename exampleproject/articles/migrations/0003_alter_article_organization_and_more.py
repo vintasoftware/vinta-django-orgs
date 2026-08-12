@@ -11,7 +11,7 @@ class Migration(migrations.Migration):
 
         migrations.swappable_dependency(settings.ORGANIZATION_MODEL),
         ("articles", "0002_articlestatistics_comment"),
-        ("organizations", "0001_initial"),
+        ("vinta_orgs", "0001_initial"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

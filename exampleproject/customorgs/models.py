@@ -14,7 +14,7 @@ separate table.
 
 from django.db import models
 
-from organizations.models import AbstractOrganization, AbstractOrganizationMembership
+from vinta_orgs.models import AbstractOrganization, AbstractOrganizationMembership
 
 
 class Organization(AbstractOrganization):

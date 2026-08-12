@@ -1,4 +1,4 @@
-from organizations_custom_data.forms import OrganizationSpecificModelForm
+from vinta_orgs_custom_data.forms import OrganizationSpecificModelForm
 
 from .models import Lecture
 

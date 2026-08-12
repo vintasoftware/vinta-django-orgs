@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.db import models
 
-from organizations_custom_data.mixins import OrganizationSpecificFieldsModelMixin
+from vinta_orgs_custom_data.mixins import OrganizationSpecificFieldsModelMixin
 
 
 class Lecture(OrganizationSpecificFieldsModelMixin):

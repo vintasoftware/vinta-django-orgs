@@ -39,8 +39,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
-    'organizations.apps.OrganizationsConfig',
-    'organizations_custom_data.apps.OrganizationsCustomDataConfig',
+    'vinta_orgs.apps.OrganizationsConfig',
+    'vinta_orgs_custom_data.apps.OrganizationsCustomDataConfig',
     'articles',
     'lectures',
 ]
@@ -53,7 +53,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'organizations.middleware.OrganizationMiddleware',
+    'vinta_orgs.middleware.OrganizationMiddleware',
 ]
 
 ROOT_URLCONF = 'exampleproject.urls'
@@ -134,5 +134,5 @@ SHARED_SCHEMA_ORGANIZATIONS = {
 
 AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',
-    'organizations.auth_backends.OrganizationModelBackend',
+    'vinta_orgs.auth_backends.OrganizationModelBackend',
 ]

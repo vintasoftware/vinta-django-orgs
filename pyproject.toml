@@ -68,7 +68,7 @@ python_version = "3.11"
 # reverse accessors, ``*_id`` fields, ``Field.__get__``); ``mypy_drf_plugin``
 # does the same for serializer fields.
 plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
-files = ["organizations", "organizations_custom_data", "tests", "exampleproject", "runtests.py", "manage.py"]
+files = ["vinta_orgs", "vinta_orgs_custom_data", "tests", "exampleproject", "runtests.py", "manage.py"]
 # Migrations are generated, and the example project's settings module is a
 # script rather than something a consumer imports.
 exclude = '(/migrations/|^docs/|^benchmarks/)'
@@ -122,7 +122,7 @@ ignore = [
 "benchmarks/apps/*/models.py" = ["DJ008"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["organizations", "organizations_custom_data", "exampleproject", "tests"]
+known-first-party = ["vinta_orgs", "vinta_orgs_custom_data", "exampleproject", "tests"]
 
 [tool.ruff.format]
 # The codebase was written with single quotes; keeping them means the formatter
@@ -131,21 +131,21 @@ known-first-party = ["organizations", "organizations_custom_data", "exampleproje
 quote-style = "single"
 
 [tool.hatch.version]
-path = "organizations/__init__.py"
+path = "vinta_orgs/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 # ``py.typed`` in each package ships the annotations to consumers (PEP 561);
 # without it a project installing this one sees ``Any`` everywhere.
-packages = ["organizations", "organizations_custom_data"]
+packages = ["vinta_orgs", "vinta_orgs_custom_data"]
 exclude = [
-    "organizations/tests",
-    "organizations_custom_data/tests",
+    "vinta_orgs/tests",
+    "vinta_orgs_custom_data/tests",
 ]
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "organizations",
-    "organizations_custom_data",
+    "vinta_orgs",
+    "vinta_orgs_custom_data",
     "AUTHORS.rst",
     "CONTRIBUTING.rst",
     "HISTORY.rst",
@@ -159,4 +159,4 @@ commit = true
 tag = true
 
 [[tool.bumpversion.files]]
-filename = "organizations/__init__.py"
+filename = "vinta_orgs/__init__.py"

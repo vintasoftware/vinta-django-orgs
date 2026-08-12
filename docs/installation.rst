@@ -17,7 +17,7 @@ To use Vinta Django Orgs in a project, add it to your ``INSTALLED_APPS``:
 
     INSTALLED_APPS = (
         ...
-        'organizations.apps.OrganizationsConfig',
+        'vinta_orgs.apps.OrganizationsConfig',
         ...
     )
 
@@ -28,6 +28,6 @@ You also have to add OrganizationMiddleware to django  `MIDDLEWARES`:
 
     MIDDLEWARES = [
         # ...
-        'organizations.middleware.OrganizationMiddleware',
+        'vinta_orgs.middleware.OrganizationMiddleware',
         # ...
     ]

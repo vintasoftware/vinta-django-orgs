@@ -26,17 +26,17 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'rest_framework',
-    'organizations.apps.OrganizationsConfig',
+    'vinta_orgs.apps.OrganizationsConfig',
     'exampleproject.articles',
     'exampleproject.lectures',
-    'organizations_custom_data.apps.OrganizationsCustomDataConfig',
+    'vinta_orgs_custom_data.apps.OrganizationsCustomDataConfig',
 ]
 
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'organizations.middleware.OrganizationMiddleware',
+    'vinta_orgs.middleware.OrganizationMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -67,6 +67,6 @@ REST_FRAMEWORK = {
 
 AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',
-    'organizations.auth_backends.OrganizationModelBackend',
-    'organizations_custom_data.auth_backends.OrganizationSpecificTablesBackend',
+    'vinta_orgs.auth_backends.OrganizationModelBackend',
+    'vinta_orgs_custom_data.auth_backends.OrganizationSpecificTablesBackend',
 ]

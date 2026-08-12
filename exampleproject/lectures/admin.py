@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from organizations_custom_data.admin import OrganizationSpecificModelAdmin
+from vinta_orgs_custom_data.admin import OrganizationSpecificModelAdmin
 
 from .models import Lecture
 

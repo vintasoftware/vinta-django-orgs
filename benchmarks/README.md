@@ -72,7 +72,7 @@ that instrumentation is not inside the timings.
   because each copy of the table holds one tenant's rows. Leaving these off
   would benchmark a misconfiguration.
 * **Same key type.** `manual`'s tenant is keyed like
-  `organizations.Organization` -- an integer primary key with the slug as a
+  `vinta_orgs.Organization` -- an integer primary key with the slug as a
   unique field -- so the comparison is not measuring the difference between a
   varchar and an integer.
 * **`ANALYZE` after seeding**, so no approach is planned against statistics

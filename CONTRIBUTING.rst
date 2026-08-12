@@ -135,7 +135,7 @@ Tips
 
 To run a subset of tests::
 
-    $ uv run python runtests.py organizations.tests.test_models
+    $ uv run python runtests.py vinta_orgs.tests.test_models
 
 To run the example project against your working tree::
 
