@@ -6,6 +6,7 @@ from django.db.models import Manager, QuerySet
 
 from vinta_orgs.querysets import (
     MultipleOrganizationsQuerySet,
+    OrganizationMembershipQuerySet,
     SingleOrganizationQuerySet,
     exclude_queryset_by_organization,
     filter_queryset_by_organization,
@@ -65,6 +66,40 @@ class OrganizationScopedManagerMixin(_ManagerBase):
 
         return filter_queryset_by_organization(queryset, organization, self.organization_lookup)
 
+    def create(self, **kwargs: Any) -> Any:
+        """Insert one row, with no organization needing to be bound.
+
+        ``Manager.create`` is generated as ``self.get_queryset().create(...)``,
+        so under ``STRICT_ORGANIZATION_FILTER`` it used to raise
+        ``OrganizationNotFoundError`` -- for a statement that reads no rows at
+        all and therefore cannot read another organization's. It broke
+        ``MyModel.objects.create(organization=organization)``, which names its
+        organization outright, and every ``instance.related_set.create(...)``,
+        which Django routes through this same method.
+
+        Without the strict setting the scoping was merely pointless here:
+        ``none()`` marks a query as returning nothing on *select*, and the
+        ``INSERT`` went ahead regardless.
+
+        Built from the unscoped queryset instead. Nothing about which
+        organization the row lands in changes -- ``save()`` still takes the
+        explicit ``organization=``, then the bound one, then
+        ``DEFAULT_ORGANIZATION_SLUG``, and still raises
+        ``OrganizationNotFoundError`` when none of the three produced one. Only
+        the point at which an unbound caller finds out moves, from the query to
+        the write.
+        """
+        return self.get_original_queryset().create(**kwargs)
+
+    def bulk_create(self, objs: Any, *args: Any, **kwargs: Any) -> Any:
+        """The same, for many rows at once, and for the same reason.
+
+        Unlike :meth:`create` this does not go through ``save()``, so each
+        object must already carry its organization -- which was true before this
+        method existed and is not changed by it.
+        """
+        return self.get_original_queryset().bulk_create(objs, *args, **kwargs)
+
     def none(self, *args: Any, **kwargs: Any) -> QuerySet[Any]:
         """An empty queryset, with no organization needing to be selected.
 
@@ -119,9 +154,17 @@ if TYPE_CHECKING:
 
         def for_current_organization(self) -> MultipleOrganizationsQuerySet: ...
         def with_organizations(self) -> MultipleOrganizationsQuerySet: ...
+
+    class _OrganizationMembershipManagerBase(_SingleOrganizationManagerBase):
+        """What ``Manager.from_queryset(OrganizationMembershipQuerySet)`` produces."""
+
+        def active(self) -> OrganizationMembershipQuerySet: ...
+        def active_for_user(self, user: Any) -> OrganizationMembershipQuerySet: ...
+        def holding_permission(self, permission: str) -> OrganizationMembershipQuerySet: ...
 else:
     _SingleOrganizationManagerBase = Manager.from_queryset(SingleOrganizationQuerySet)
     _MultipleOrganizationsManagerBase = Manager.from_queryset(MultipleOrganizationsQuerySet)
+    _OrganizationMembershipManagerBase = Manager.from_queryset(OrganizationMembershipQuerySet)
 
 
 class SingleOrganizationModelManager(OrganizationScopedManagerMixin, _SingleOrganizationManagerBase):
@@ -137,3 +180,11 @@ class MultipleOrganizationModelManager(OrganizationScopedManagerMixin, _Multiple
 # still narrow down later instead of falling back to raw ``filter()`` calls.
 SingleOrganizationUnscopedManager = _SingleOrganizationManagerBase
 MultipleOrganizationsUnscopedManager = _MultipleOrganizationsManagerBase
+
+# The membership model's default manager. Unscoped for the reason spelled out on
+# ``AbstractOrganizationMembership.objects``, and a strict superset of
+# ``SingleOrganizationUnscopedManager`` -- it only adds the membership-shaped
+# lookups, so the reverse accessors Django builds from it (``user.memberships``,
+# ``organization.memberships``) gain ``active()`` and ``holding_permission()``
+# without losing anything they had.
+OrganizationMembershipUnscopedManager = _OrganizationMembershipManagerBase

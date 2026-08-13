@@ -109,11 +109,17 @@ class OrganizationModelBackend(ModelBackend):
         return cache
 
     def _get_membership(self, user_obj: AnyUser, organization: Organization) -> OrganizationMembership | None:
-        """Return this user's membership in ``organization``, at most one query per organization.
+        """Return this user's *active* membership in ``organization``, at most one query per organization.
 
         ``_get_organization_permissions`` is called once for ``user`` and once
         for ``group`` permissions, and each call needs the same membership row;
         without this cache every permission check paid for both.
+
+        ``is_active=True`` is part of the lookup rather than a filter applied to
+        its result, so the cache holds ``None`` for a deactivated member and
+        nothing downstream can reach a row it is not allowed to use. A
+        deactivated administrator resolves exactly what a non-member resolves:
+        nothing.
         """
         cache = self._get_organization_cache(user_obj, '_organization_membership_cache')
 
@@ -121,12 +127,20 @@ class OrganizationModelBackend(ModelBackend):
             cache[organization.pk] = (
                 get_organization_membership_model()
                 ._default_manager.filter_by_organization(organization)
-                .filter(user=user_obj)
+                .filter(user=user_obj, is_active=True)
                 .first()
             )
 
         membership: OrganizationMembership | None = cache[organization.pk]
         return membership
+
+    @staticmethod
+    def _labelled(permissions: QuerySet[Permission]) -> set[str]:
+        """``{'app_label.codename'}`` -- the shape ``has_perm`` compares against."""
+        return {
+            '%s.%s' % (app_label, codename)
+            for app_label, codename in permissions.values_list('content_type__app_label', 'codename').order_by()
+        }
 
     def _get_organization_permissions(self, user_obj: AnyUser, obj: Model | None, from_name: str) -> set[str]:
         if not user_obj.is_active or user_obj.is_anonymous or obj is not None:
@@ -154,13 +168,7 @@ class OrganizationModelBackend(ModelBackend):
                 else:
                     membership_perms = getattr(self, '_get_%s_organization_permissions' % from_name)(membership)
 
-            if membership_perms is None:
-                cache[organization.pk] = set()
-            else:
-                cache[organization.pk] = {
-                    '%s.%s' % (ct, name)
-                    for ct, name in membership_perms.values_list('content_type__app_label', 'codename').order_by()
-                }
+            cache[organization.pk] = set() if membership_perms is None else self._labelled(membership_perms)
 
         permissions: set[str] = cache[organization.pk]
         return permissions
@@ -242,3 +250,92 @@ class OrganizationModelBackend(ModelBackend):
         return self.get_all_global_permissions(user_obj, obj).union(
             self.get_all_organization_permissions(user_obj, obj)
         )
+
+    def _get_membership_permissions(self, user_obj: AnyUser, organization: Organization) -> set[str]:
+        """The permissions ``user_obj`` holds through an active membership in ``organization``.
+
+        The union of the membership's own ``permissions`` grant with the
+        permissions its ``groups`` carry, and nothing else. Cached by
+        organization pk on the user object, the same way -- and through the same
+        helper as -- every other cache in this backend, so asking about a second
+        organization neither re-queries the first nor poisons its entry.
+        """
+        cache = self._get_organization_cache(user_obj, '_organization_membership_perm_cache')
+
+        if organization.pk not in cache:
+            membership = self._get_membership(user_obj, organization)
+
+            if membership is None:
+                cache[organization.pk] = set()
+            else:
+                cache[organization.pk] = self._labelled(
+                    self._get_user_organization_permissions(membership)
+                ) | self._labelled(self._get_group_organization_permissions(membership))
+
+        permissions: set[str] = cache[organization.pk]
+        return permissions
+
+    def get_organization_permissions(
+        self,
+        user_obj: AnyUser,
+        organization: Organization | None,
+        *,
+        include_global: bool = False,
+        allow_superuser: bool = False,
+    ) -> set[str]:
+        """What ``user_obj`` may do **in ``organization``** -- named, not ambient.
+
+        Every other permission entry point on this backend reads the
+        organization from the context, so it can only answer about whichever one
+        happens to be bound. That is the wrong shape for the question almost
+        every call site actually asks: "is this user an administrator" is a
+        statement about a *particular* membership's organization. Two shapes of
+        call site cannot express it any other way -- one that asks about an
+        organization other than the bound one (an ancestor, for reseller
+        billing), and one that binds nothing at all (a DRF view outside the
+        middleware's reach). Both get a confidently wrong answer from
+        ``has_perm``.
+
+        The two sources that *widen* the answer are parameters here rather than
+        built in, because both are privilege escalations when this question is
+        the one being asked, and both default to off:
+
+        ``include_global``
+            ``user.user_permissions`` plus the user's own global ``auth.Group``
+            rows. Neither is scoped to an organization, so a single grant made
+            once in the Django admin becomes a grant in *every* organization at
+            once.
+
+        ``allow_superuser``
+            The short-circuit that answers ``Permission.objects.all()`` without
+            consulting any membership. A superuser reading every tenant through
+            the Django admin is one thing; a superuser passing a gate that
+            charges a customer's card because they are nominally a member of the
+            organization is another.
+
+        ``has_perm`` keeps ``ModelBackend`` semantics exactly -- superuser
+        passes, global grants union in -- because that is what the Django admin
+        and every ``ModelBackend`` consumer expect of it. This method is an
+        addition, not an override: nothing in ``ModelBackend`` reaches it.
+
+        Prefer :func:`vinta_orgs.authorization.has_organization_permission`,
+        which wraps this and also binds ``organization`` for the duration of the
+        check, so anything underneath that still reads the ambient organization
+        sees the one being asked about.
+        """
+        if organization is None or user_obj.is_anonymous or not user_obj.is_active:
+            return set()
+
+        if allow_superuser and user_obj.is_superuser:
+            return self._labelled(Permission.objects.all())
+
+        permissions = self._get_membership_permissions(user_obj, organization)
+
+        if include_global:
+            # ``get_all_global_permissions`` applies the superuser
+            # short-circuit to the *global* half, which is where it belongs:
+            # asking for the global half is asking for ``ModelBackend``'s
+            # answer, and that is what ``ModelBackend`` answers.
+            permissions = permissions | self.get_all_global_permissions(user_obj)
+
+        return permissions

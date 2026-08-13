@@ -33,13 +33,17 @@ INSTALLED_APPS = [
 ]
 
 
+# ``OrganizationMiddleware`` after ``AuthenticationMiddleware``: the retrievers
+# that read a caller-supplied organization check it against the caller's
+# memberships, and that needs ``request.user`` to exist. The other order is
+# reported by the ``vinta_orgs.W001`` system check.
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'vinta_orgs.middleware.OrganizationMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'vinta_orgs.middleware.OrganizationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]

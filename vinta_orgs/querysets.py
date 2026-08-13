@@ -22,7 +22,7 @@ from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, Self, TypeVar
 
 from django.db import connections
-from django.db.models import Exists, OuterRef, QuerySet, Subquery
+from django.db.models import Exists, OuterRef, Q, QuerySet, Subquery
 from django.db.models.constants import LOOKUP_SEP
 
 from vinta_orgs.exceptions import OrganizationNotFoundError
@@ -59,17 +59,58 @@ def exclude_queryset_by_organization(
     return queryset.exclude(**{organization_lookup: organization})
 
 
+def split_permission_label(permission: str) -> tuple[str, str]:
+    """Split ``'app_label.codename'`` into its two halves.
+
+    Spelled out rather than left to ``partition('.')`` because the sloppy
+    version fails silently: ``'manage_members'.partition('.')`` yields an empty
+    codename, and a filter on an empty codename matches nothing -- a permission
+    check that always answers "no" and a queryset that is always empty, neither
+    of which looks like the typo it is.
+    """
+    app_label, separator, codename = permission.partition('.')
+
+    if not separator or not app_label or not codename:
+        raise ValueError("%r is not a permission label; expected the 'app_label.codename' form." % permission)
+
+    return app_label, codename
+
+
+def filter_memberships_holding_permission(queryset: _QuerySetT, permission: str) -> _QuerySetT:
+    """Restrict ``queryset`` to the memberships that carry ``permission``.
+
+    Holds the behaviour of :meth:`OrganizationMembershipQuerySet.holding_permission`
+    so a project whose membership model points ``_queryset_class`` at a class
+    that does not inherit that queryset can still be asked the question -- which
+    is what :func:`vinta_orgs.authorization.membership_holds_permission` does,
+    since ``ORGANIZATION_MEMBERSHIP_MODEL`` may name anything.
+    """
+    app_label, codename = split_permission_label(permission)
+
+    # Each ``Q`` keeps its codename and its app label inside one ``filter()``
+    # call so that both bind to the *same* permission row. Split across two
+    # calls they would join twice, and a codename declared in some other app
+    # could satisfy half of the condition.
+    return queryset.filter(
+        Q(permissions__codename=codename, permissions__content_type__app_label=app_label)
+        | Q(
+            groups__permissions__codename=codename,
+            groups__permissions__content_type__app_label=app_label,
+        )
+    ).distinct()
+
+
 def scope_queryset_to_current_organization(
     queryset: _QuerySetT, organization_lookup: str = 'organization'
 ) -> _QuerySetT:
     """Restrict ``queryset`` to the organization bound to the current context.
 
-    With no organization bound this returns an empty queryset, so a query that
-    escapes its scope can never leak another organization's rows. Set
-    ``STRICT_ORGANIZATION_FILTER`` to raise ``OrganizationNotFoundError``
-    instead -- silently empty results are hard to tell from "no data yet" in a
-    task or a management command, where forgetting to bind an organization is
-    the likelier explanation.
+    With no organization bound this raises ``OrganizationNotFoundError``, since
+    an unbound scoped query is nearly always a query that forgot to bind. Clear
+    ``STRICT_ORGANIZATION_FILTER`` to return an empty queryset instead -- which
+    also cannot leak another organization's rows, but is hard to tell apart from
+    "no data yet", and does nothing about the ``get_or_create`` that looks a row
+    up across every tenant before writing to it.
     """
     organization = get_current_organization()
 
@@ -368,6 +409,69 @@ class SingleOrganizationQuerySet(OrganizationScopedQuerySetMixin, QuerySet):
         serializer, a template, ``__str__`` -- otherwise pays one query per row.
         """
         return self.select_related('organization')
+
+
+class OrganizationMembershipQuerySet(SingleOrganizationQuerySet):
+    """Queryset for the membership model, with the membership-shaped lookups.
+
+    Built on :class:`SingleOrganizationQuerySet` so ``filter_by_organization()``
+    and ``for_current_organization()`` chain off it exactly as they do off every
+    other organization-scoped model. It does **not** scope implicitly -- that is
+    a property of the manager, and ``AbstractOrganizationMembership``'s default
+    manager is deliberately unscoped, because a membership is the row you read
+    to decide which organization to select.
+    """
+
+    def active(self) -> Self:
+        """Only the memberships that still grant anything.
+
+        ``is_active=False`` is the membership's soft delete: the row is kept for
+        the audit trail, and everything that asks what a member may do has to
+        treat it as though the row were gone. The permission backend applies the
+        same filter (see
+        :meth:`vinta_orgs.auth_backends.OrganizationModelBackend._get_membership`),
+        so a queryset that skips this reports capabilities the backend refuses.
+        """
+        return self.filter(is_active=True)
+
+    def active_for_user(self, user: Any) -> Self:
+        """``user``'s active memberships, oldest first, with the organization fetched.
+
+        The organization switcher's query, and the one
+        :func:`vinta_orgs.helpers.memberships.resolve_organization_for_user`
+        reads. Ordered so that "the caller's only organization" is a stable
+        answer rather than whatever the database returned first, and
+        ``select_related`` because every caller goes on to read
+        ``membership.organization``.
+        """
+        return self.filter(user=user).active().select_related('organization').order_by('created')
+
+    def holding_permission(self, permission: str) -> Self:
+        """The memberships that carry ``permission``, an ``'app_label.codename'`` string.
+
+        The queryset form of the question
+        :func:`vinta_orgs.authorization.has_organization_permission` answers for
+        one ``(user, organization)`` pair, and the two agree by construction:
+        both read the union of the membership's own ``permissions`` grant with
+        the permissions its ``groups`` carry, and neither consults the *global*
+        half (``user.user_permissions``, the user's own ``auth.Group`` rows) or
+        the superuser short-circuit -- none of which says anything about this
+        organization.
+
+        This is what a last-administrator guard has to count by once roles are
+        expressed as permissions: "how many members can still manage members"
+        is this queryset's ``count()``, narrowed to the organization.
+
+        The direct ``permissions`` grant is included even in projects where
+        nothing writes it, because **over-counting is the safe direction here**
+        and under-counting is not: a guard that misses a member holding the
+        permission directly would happily remove the last real administrator.
+
+        ``distinct()`` is not optional -- both paths are multi-valued joins, so
+        a membership in two groups that each carry the permission would
+        otherwise be counted twice.
+        """
+        return filter_memberships_holding_permission(self, permission)
 
 
 class MultipleOrganizationsQuerySet(OrganizationScopedQuerySetMixin, QuerySet):

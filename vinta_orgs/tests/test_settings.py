@@ -10,7 +10,8 @@ class GetSettingTests(TestCase):
     def test_returns_the_default_when_the_project_configures_nothing(self) -> None:
         self.assertEqual(get_setting('DEFAULT_SITE_DOMAIN'), 'localhost')
         self.assertEqual(get_setting('DEFAULT_ORGANIZATION_SLUG'), 'default')
-        self.assertFalse(get_setting('STRICT_ORGANIZATION_FILTER'))
+        self.assertTrue(get_setting('STRICT_ORGANIZATION_FILTER'))
+        self.assertTrue(get_setting('VERIFY_ORGANIZATION_MEMBERSHIP'))
 
     def test_unknown_setting_returns_none(self) -> None:
         self.assertIsNone(get_setting('NOT_A_SETTING'))

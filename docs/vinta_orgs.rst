@@ -37,10 +37,26 @@ vinta\_orgs.auth\_backends module
    :show-inheritance:
    :undoc-members:
 
+vinta\_orgs.authorization module
+--------------------------------
+
+.. automodule:: vinta_orgs.authorization
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
 vinta\_orgs.cache module
 ------------------------
 
 .. automodule:: vinta_orgs.cache
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+vinta\_orgs.checks module
+-------------------------
+
+.. automodule:: vinta_orgs.checks
    :members:
    :show-inheritance:
    :undoc-members:
@@ -57,6 +73,14 @@ vinta\_orgs.context\_processor module
 -------------------------------------
 
 .. automodule:: vinta_orgs.context_processor
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+vinta\_orgs.drf module
+----------------------
+
+.. automodule:: vinta_orgs.drf
    :members:
    :show-inheritance:
    :undoc-members:
@@ -153,6 +177,14 @@ vinta\_orgs.state module
 ------------------------
 
 .. automodule:: vinta_orgs.state
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+vinta\_orgs.testing module
+--------------------------
+
+.. automodule:: vinta_orgs.testing
    :members:
    :show-inheritance:
    :undoc-members:

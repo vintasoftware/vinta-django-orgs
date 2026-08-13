@@ -94,7 +94,7 @@ shipped here:
             ]
 
     class OrganizationMembership(AbstractOrganizationMembership):
-        is_active = models.BooleanField(default=True)
+        notes = models.TextField(blank=True)
 
 .. code:: python
 
@@ -103,8 +103,32 @@ shipped here:
     ORGANIZATION_MEMBERSHIP_MODEL = 'tenancy.OrganizationMembership'
 
 The abstract bases carry ``name``, ``slug`` and the timestamps; the membership
-base carries the organization, the user, the groups and the permissions. Your
-subclass adds fields and nothing else is required of it.
+base carries the organization, the user, the groups, the permissions and
+``is_active``. Your subclass adds fields and nothing else is required of it.
+
+Replacing the membership's uniqueness constraint
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``AbstractOrganizationMembership.Meta`` declares
+``unique_together = [('user', 'organization')]``, and Django names that
+constraint after your app and model. If you need the name under your own control
+-- raw SQL that references it, a foreign key bound to it by name, a constraint
+your operations team already documented -- empty the inherited one and declare
+your own:
+
+.. code:: python
+
+    class OrganizationMembership(AbstractOrganizationMembership):
+        class Meta(AbstractOrganizationMembership.Meta):
+            unique_together = []
+            constraints = [
+                models.UniqueConstraint(fields=['user', 'organization'],
+                                        name='uniq_membership_user_per_organization'),
+            ]
+
+The guarantee is identical; only the name moves. Emptying ``unique_together``
+without putting a ``UniqueConstraint`` back leaves the model with nothing
+stopping two memberships for the same pair.
 
 Both settings are ordinary top-level Django settings rather than keys inside
 ``SHARED_SCHEMA_ORGANIZATIONS``, because Django's own ``Meta.swappable``
@@ -216,6 +240,113 @@ owner?" has to name the organization it means, or it will answer "an owner of
 ``for_current_organization()`` for exactly this reason; check your own.
 
 
+Deactivating a member
+---------------------
+
+``OrganizationMembership.is_active`` is the membership's soft delete. Unset it
+rather than deleting the row, and the audit trail, the invitations and anything
+else pointing at the membership survive:
+
+.. code:: python
+
+    membership.is_active = False
+    membership.save()
+
+An inactive membership grants nothing and selects nothing. Specifically:
+
+* the permission backend resolves no permissions from it, so ``has_perm`` and
+  every DRF permission class built on it refuse -- a deactivated administrator
+  is exactly as powerful as a non-member;
+* the retrievers will not select its organization for that user;
+* ``resolve_membership_for_user`` treats it as absent, so it does not make a
+  single-organization caller look ambiguous;
+* the permission classes and the organization list endpoint shipped here skip
+  it.
+
+The gate is in the lookup, not in a "clear the groups on deactivation" side
+effect. Deactivation happens on more than one code path in most projects, a
+side effect has to be remembered on every one of them, and reactivation then
+needs a restore step that knows what to put back. A filter cannot be forgotten.
+
+The membership-shaped lookups say the same thing in a queryset:
+
+.. code:: python
+
+    user.memberships.active()
+    OrganizationMembership.objects.active_for_user(user)          # oldest first, organization fetched
+    OrganizationMembership.objects.holding_permission('tenancy.manage_members')
+
+``holding_permission`` is the union of a membership's own ``permissions`` grant
+with the permissions its ``groups`` carry, and it is what a last-administrator
+guard has to count by: "how many members can still manage members" is that
+queryset's ``count()``, narrowed to the organization. It reads the same two
+sources the permission backend reads, and neither reads the user's *global*
+permissions, so the guard and the gate cannot disagree.
+
+
+May this user do X in organization Y?
+-------------------------------------
+
+``user.has_perm('tenancy.manage_members')`` does not answer that question. It
+answers a different one, and the two agree often enough that the difference is
+easy to miss:
+
+* **The organization is ambient.** ``has_perm`` resolves organization
+  permissions for whichever organization is *bound*, so it cannot be asked about
+  another one -- an ancestor organization in a reseller hierarchy, say -- and it
+  answers "no permissions at all" from a view that binds nothing.
+* **The global half.** ``has_perm`` unions in ``user.user_permissions`` and the
+  user's own ``auth.Group`` rows. Neither is scoped to an organization, so one
+  grant made once in the Django admin is a grant in *every* organization.
+* **The superuser short-circuit.** A superuser passes before any backend runs.
+
+Name the organization instead:
+
+.. code:: python
+
+    from vinta_orgs.authorization import has_organization_permission
+
+    class IsOrganizationAdmin(BasePermission):
+        def has_permission(self, request, view):
+            return has_organization_permission(
+                request.user, 'tenancy.manage_members', request.organization
+            )
+
+It answers from an **active membership in the organization named**, and from
+nothing else. The organization may be an instance or a primary key; when it is
+the one already bound, the check costs no extra query. Both widening sources are
+available, off by default, and worth being explicit about when you want them:
+
+.. code:: python
+
+    has_organization_permission(user, perm, organization, include_global=True)
+    has_organization_permission(user, perm, organization, allow_superuser=True)
+
+``has_perm`` itself is unchanged and keeps ``ModelBackend`` semantics --
+superuser passes, global grants union in -- because that is what the Django
+admin and ``DjangoModelPermissions`` expect of it. Use it where you want that
+answer; use this where you want the other one.
+
+Two more shapes of the same question:
+
+.. code:: python
+
+    from vinta_orgs.authorization import membership_holds_permission, resolve_membership_permissions
+
+    # A membership row you already hold
+    membership_holds_permission(membership, 'tenancy.manage_members')
+
+    # A whole page of memberships, in a constant number of queries
+    resolve_membership_permissions(page)   # {membership pk: sorted permission labels}
+
+``resolve_membership_permissions`` exists because the backend caches per
+``(user, organization)``: a page of N memberships is N lookups through it, which
+is what anyone exposing memberships over an API hits on their first list
+endpoint. It walks prefetched relations instead, and reports exactly what the
+backend would resolve -- an inactive membership, or an inactive user, publishes
+the empty list.
+
+
 Relations that check the organization
 -------------------------------------
 
@@ -285,6 +416,49 @@ Both models must be organization-aware, since the join reads ``organization_id``
 on each side. Note that the check is at the ORM level -- the database is not
 stopping a mismatched row from being written by raw SQL, it just will not be
 readable through the relation.
+
+Two fields, and what that means for fixtures
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The two-field shape is invisible to application code, which is the point, but it
+is *not* invisible to anything that walks ``Model._meta.get_fields()`` and fills
+each one in -- which is what a fixture factory does.
+
+``Comment`` reports both ``article`` (a ``ForeignObject``, no column of its own)
+and ``article_fk`` (the real ``ForeignKey``). ``model_bakery`` does not know what
+to do with the first one, so it refuses:
+
+.. code:: python
+
+    baker.make(Comment)
+    # TypeError: field article type <class 'django.db.models.fields.related.ForeignObject'>
+    #            is not supported by baker.
+
+    baker.make(Comment, article_fk=article)   # same TypeError: `article` is still unfilled
+
+**Always pass the relation under its declared name.** That is the one spelling
+baker accepts, and it is also the one that does the right thing -- the
+descriptor copies the target's organization onto the new row, so the two cannot
+drift apart:
+
+.. code:: python
+
+    baker.make(Comment, article=article)               # article_fk and organization both set
+    baker.prepare(Comment, article=article)
+    baker.make(Comment, article=article, _quantity=2)
+
+If you are converting an existing suite, the sweep is mechanical -- every
+``baker.make`` of a model with a safe relation has to name that relation -- but
+it is not optional, because the failure is a hard ``TypeError`` at every such
+call site rather than something you can leave for later.
+
+``get_or_create``, ``update_or_create`` and ``filter`` take either name, and
+mean the same thing by both:
+
+.. code:: python
+
+    Comment.objects.get_or_create(article=article, defaults={'text': '…'})
+    Comment.objects.filter(article=article)
 
 
 CACHE_ORGANIZATION_RETRIEVAL
@@ -368,8 +542,127 @@ is automatically selected.
 Organization-Slug HTTP header
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If the header ``Organization-Slug`` could be found in the request, the organization
-with that slug is automatically selected.
+If the header ``Organization-Slug`` is present, the organization with that slug
+is selected -- **provided the caller is an active member of it**. An
+authenticated caller naming an organization they do not belong to is refused
+with ``OrganizationAccessDeniedError`` (a ``PermissionDenied``, so a 403), and
+so is one whose membership has been deactivated. A slug matching no
+organization at all still raises ``OrganizationNotFoundError``, as it always
+has -- so this retriever does distinguish "not yours" from "no such thing". Use
+``resolve_membership_for_user`` (below) where that distinction must not be
+observable.
+
+The header is set by whoever is making the request. Without that check, any
+authenticated user selects any tenant by typing its slug, and every scoped
+manager in the process then serves that tenant's rows. ``retrieve_by_domain``
+needs nothing of the sort, because the host is not the caller's to choose.
+
+Two cases are let through deliberately: an anonymous request (no membership to
+check, no privilege to escalate -- the caller gets what that organization
+exposes publicly, exactly as they would by visiting its domain), and a request
+with no ``request.user`` at all, which is what ``AuthenticationMiddleware`` not
+having run yet looks like. **Put ``OrganizationMiddleware`` after
+``AuthenticationMiddleware``**; the ``vinta_orgs.W001`` system check reports it
+if you have not. ``retrieve_by_session`` is checked the same way.
+
+Set ``VERIFY_ORGANIZATION_MEMBERSHIP`` to ``False`` to skip the check.
+
+The caller's own membership
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``retrieve_by_user_membership`` selects the authenticated caller's organization
+when they have exactly one. It is not in ``ORGANIZATION_RETRIEVERS`` by default;
+add it *last*, after the retrievers that read something the caller said:
+
+.. code:: python
+
+    SHARED_SCHEMA_ORGANIZATIONS = {
+        'ORGANIZATION_RETRIEVERS': [
+            'vinta_orgs.organization_retrievers.retrieve_by_domain',
+            'vinta_orgs.organization_retrievers.retrieve_by_http_header',
+            'vinta_orgs.organization_retrievers.retrieve_by_user_membership',
+        ],
+    }
+
+A caller with several memberships and nothing naming one raises
+``AmbiguousOrganizationError`` (a ``BadRequest``, so a 400) rather than
+resolving to whichever membership is oldest. Picking one means the request reads
+and writes an organization the caller never named, chosen by row creation order:
+a user who administers an old organization A and is a plain member of B would
+pass an administrator gate for a request that then serves B.
+
+The whole table lives in
+``vinta_orgs.helpers.memberships.resolve_membership_for_user``, which you can
+call directly:
+
+==================  ==============================  =====================================
+Active memberships  slug named by the caller         Result
+==================  ==============================  =====================================
+any                 -- anonymous caller             ``None``
+any                 names one of them               that membership
+any                 names anything else             ``OrganizationAccessDeniedError``
+0                   absent                          ``None``
+1                   absent                          that membership
+2+                  absent                          ``AmbiguousOrganizationError``
+==================  ==============================  =====================================
+
+Pass ``strict=False`` to turn both refusals into ``None``. That is for the
+endpoints which must work *before* an organization is selected -- the
+organization switcher, onboarding, accepting an invitation -- not a default to
+reach for.
+
+Django REST Framework
+~~~~~~~~~~~~~~~~~~~~~
+
+The middleware resolves at Django-middleware time, which is **before DRF
+authentication**. With session authentication that is fine. With token, JWT or
+any other DRF authentication class it is not: ``request.user`` is anonymous at
+that point, so a header cannot be checked against the caller and there is no
+membership to fall back on.
+
+``OrganizationScopedAPIViewMixin`` moves the resolution into the one seam
+between "``request.user`` is real" and "``check_permissions`` runs":
+
+.. code:: python
+
+    from rest_framework import viewsets
+    from vinta_orgs.drf import OrganizationScopedAPIViewMixin
+
+    class BaseViewSet(OrganizationScopedAPIViewMixin, viewsets.ModelViewSet):
+        pass
+
+Every request then carries ``request.organization`` and
+``request.organization_membership``, and the organization is bound to the
+context every scoped manager reads -- so ``MyModel.objects`` inside the view
+answers for it. The binding is released in a ``finally`` around the whole of
+``dispatch``, which is the only placement with no exit path around it:
+``finalize_response`` does not run when DRF re-raises an exception it has no
+response for, and a binding that outlived the request would be read by the next
+request the worker serves.
+
+Resolving *before* ``check_permissions`` is the point. Resolving after it means
+permission classes answer for one organization while ``get_queryset`` serves
+another.
+
+Views that must work before an organization is selected opt out, either for the
+whole class or for one action:
+
+.. code:: python
+
+    class OrganizationViewSet(BaseViewSet):
+        organization_optional_actions = ('mine',)
+
+    class OnboardingView(OrganizationScopedAPIViewMixin, APIView):
+        organization_resolution_optional = True
+
+The 400 and the 403 are then suppressed and the organization resolves to
+``None`` instead. Write those views against an unbound context; under
+``STRICT_ORGANIZATION_FILTER`` a scoped read from one raises rather than quietly
+returning nothing.
+
+The middleware can stay in ``MIDDLEWARE`` alongside the mixin -- it resolves the
+non-DRF surface, and the mixin's binding replaces its own for the duration of
+the view and restores it on the way out.
 
 Forcing organization selection
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -445,6 +738,76 @@ collection will already be filtered by that organization.
 
 
 
+Seeded groups and transactional tests
+-------------------------------------
+
+Roles are best expressed as seeded ``auth.Group`` rows -- a data migration
+creates them, memberships go in them, and every check reads a permission rather
+than a role name. ``create_default_organization_groups()`` seeds
+``organization_owner`` that way.
+
+**This breaks the moment a test flushes the database, and it breaks silently.**
+
+A test that runs in a real transaction -- ``TransactionTestCase``, or
+``@pytest.mark.django_db(transaction=True)`` -- flushes every table when it
+finishes. ``flush`` re-emits ``post_migrate``, so content types and permissions
+are rebuilt by Django's own receivers, but nothing rebuilds rows a *data
+migration* wrote. The groups, and every ``auth_group_permissions`` row hanging
+off them, are gone for the rest of that worker's session.
+
+What that looks like is not "a missing group". Both test runners group
+transactional tests together and run them after the rest, so only the first one
+sees a seeded database; from then on every membership a test builds silently
+holds no permission at all, and the failures land in whichever unrelated module
+asserts on a permission next. It reads as flakiness, or as parallel load.
+
+The repair has to be at **setup**: the flush happens in the runner's own
+finalizer, after any teardown hook a test could install, so there is no hook late
+enough.
+
+With pytest, add the plugin to your root ``conftest.py``:
+
+.. code:: python
+
+    pytest_plugins = ['vinta_orgs.testing']
+
+Its autouse fixture reseeds before every test that has a database, and leaves
+tests without one alone.
+
+With Django's runner, mix into the test cases that flush:
+
+.. code:: python
+
+    from vinta_orgs.testing import SeededOrganizationGroupsMixin
+
+    class MyFlowTests(SeededOrganizationGroupsMixin, TransactionTestCase):
+        ...
+
+Or call ``reseed_organization_groups()`` yourself. It is idempotent and additive
+-- it does not revoke a permission a test attached on purpose -- and when
+nothing was destroyed it costs one ``get_or_create`` that finds its row and
+stops.
+
+If you seed more groups than the one shipped here, list *the same callables your
+data migration calls* rather than copying their contents:
+
+.. code:: python
+
+    SHARED_SCHEMA_ORGANIZATIONS = {
+        'ORGANIZATION_GROUP_SEEDERS': [
+            'vinta_orgs.helpers.organizations.create_default_organization_groups',
+            'myproject.organizations.groups.create_role_groups',
+        ],
+    }
+
+This has to reproduce *head* state. A data migration is entitled to stop
+describing what the code now expects; the seeder is not.
+
+Seeders run with no organization bound, since they run before the test that
+would bind one. Groups are global rows, so that only constrains a project which
+has hung organization-scoped state off ``auth.Group``.
+
+
 Configuration options
 ---------------------
 
@@ -507,21 +870,79 @@ In here you can defined which http header we should use to extract the organizat
 default value: ``'Organization-Slug'``
 
 
+VERIFY_ORGANIZATION_MEMBERSHIP
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When ``True``, the retrievers that read a *caller-supplied* organization --
+``retrieve_by_http_header`` and ``retrieve_by_session``, never
+``retrieve_by_domain`` -- refuse one the authenticated caller holds no active
+membership in, with ``OrganizationAccessDeniedError`` (a 403).
+
+Turn it off only when the header is a routing hint in front of a surface that
+authorizes every read on its own. With it off, an authenticated caller selects
+any tenant by sending its slug.
+
+Requires ``OrganizationMiddleware`` to run *after* ``AuthenticationMiddleware``,
+since the check reads ``request.user``. The ``vinta_orgs.W001`` system check
+reports the other order.
+
+default value: ``True``
+
+
 STRICT_ORGANIZATION_FILTER
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When no organization is selected, querying an organization-aware model returns
-an empty queryset. Set this to ``True`` to raise ``OrganizationNotFoundError``
-instead: an empty result is hard to tell from "no data yet", and in a task or a
-management command a missing selection is the likelier explanation.
+Querying an organization-aware model with no organization selected raises
+``OrganizationNotFoundError``. Set this to ``False`` to return an empty queryset
+instead.
 
-Explicitly scoped reads (``filter_by_organization``, ``unscoped``,
-``original_manager``) are unaffected. So is ``MyModel.objects.none()``: it asks
-for no rows and so cannot return another organization's, which is what makes it
-usable to express a denied read in a view and safe for schema generators to call
-outside any request.
+An unbound scoped query is nearly always a bug, and the "harmless, it just
+returns nothing" reading is only true of reads:
 
-default value: ``False``
+.. code:: python
+
+    # With nothing selected, and STRICT_ORGANIZATION_FILTER off:
+    MyModel.objects.get_or_create(external_id='abc123', defaults={...})
+
+That looks the row up across *every* tenant. It finds one belonging to somebody
+else, hands it back as though it were this caller's, and the code that follows
+writes to it. Nothing raises, nothing logs, and the cross-tenant write is
+discovered later by whoever notices the data. On, the same line raises at the
+point that forgot to select an organization.
+
+Three things do **not** raise, because none of them reads a row that could
+belong to another organization:
+
+* explicitly scoped queries -- ``filter_by_organization()``, ``unscoped()``,
+  ``original_manager``;
+* ``MyModel.objects.none()``, which asks for no rows at all. That is what makes
+  it usable to express a denied read in a view, and safe for schema generators
+  to call outside any request;
+* ``MyModel.objects.create()`` and ``bulk_create()``, which insert without
+  looking anything up. ``create()`` still resolves the organization from the
+  explicit ``organization=``, then the selected one, then
+  ``DEFAULT_ORGANIZATION_SLUG``, and still raises when none of the three
+  produced one -- the refusal comes from ``save()`` rather than from the query.
+  ``instance.related_set.create(...)`` goes through the same method.
+
+``get_or_create()`` and ``update_or_create()`` are deliberately not in that
+list: they look a row up first, and that lookup is the dangerous one above.
+
+Views that deliberately run unbound -- the organization switcher, onboarding --
+read through ``original_manager`` or scope explicitly, which is the point: an
+unbound scoped read becomes a decision rather than an accident.
+
+default value: ``True``
+
+
+ORGANIZATION_GROUP_SEEDERS
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Import paths of the callables that build your seeded organization groups. Read
+only by ``vinta_orgs.testing`` -- see `Seeded groups and transactional tests`_.
+
+default value: ``[]``, meaning
+``['vinta_orgs.helpers.organizations.create_default_organization_groups']``
 
 
 AUTO_DEFER_SAFE_JOINS

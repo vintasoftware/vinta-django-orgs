@@ -46,13 +46,7 @@ class SingleOrganizationQuerySetTests(TestCase):
 
         self.assertEqual(queryset.for_current_organization().count(), 5)
 
-    def test_for_current_organization_is_empty_without_a_bound_organization(self) -> None:
-        clear_current_organization()
-
-        self.assertEqual(Article.original_manager.all().for_current_organization().count(), 0)
-
-    @override_settings(SHARED_SCHEMA_ORGANIZATIONS={'STRICT_ORGANIZATION_FILTER': True})
-    def test_strict_filter_raises_instead_of_returning_nothing(self) -> None:
+    def test_an_unbound_scoped_query_raises(self) -> None:
         clear_current_organization()
 
         with self.assertRaises(OrganizationNotFoundError):
@@ -61,7 +55,12 @@ class SingleOrganizationQuerySetTests(TestCase):
         with self.assertRaises(OrganizationNotFoundError):
             Article.objects.count()
 
-    @override_settings(SHARED_SCHEMA_ORGANIZATIONS={'STRICT_ORGANIZATION_FILTER': True})
+    @override_settings(SHARED_SCHEMA_ORGANIZATIONS={'STRICT_ORGANIZATION_FILTER': False})
+    def test_for_current_organization_is_empty_without_a_bound_organization_when_not_strict(self) -> None:
+        clear_current_organization()
+
+        self.assertEqual(Article.original_manager.all().for_current_organization().count(), 0)
+
     def test_strict_filter_leaves_explicitly_scoped_queries_alone(self) -> None:
         clear_current_organization()
 

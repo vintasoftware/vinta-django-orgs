@@ -3,6 +3,136 @@
 History
 -------
 
+Unreleased
+++++++++++
+
+Breaking
+~~~~~~~~
+
+* **``STRICT_ORGANIZATION_FILTER`` now defaults to ``True``.** Querying an
+  organization-scoped model with no organization selected raises
+  ``OrganizationNotFoundError`` instead of returning an empty queryset. An
+  unbound scoped query is nearly always a bug, and "harmless, it returns
+  nothing" is only true of reads: a ``get_or_create`` with nothing selected
+  looks the row up across every tenant, finds one belonging to somebody else,
+  and hands it back for the caller to write to.
+
+  Set it to ``False`` to keep the old behaviour. Code that deliberately reads
+  across organizations should say so instead -- ``original_manager``,
+  ``unscoped()``, ``filter_by_organization()``.
+
+* ``IsOrganizationOwner`` and ``DjangoOrganizationModelPermissions`` answer
+  ``False`` when no organization is selected rather than letting the strict
+  filter raise through them. Nobody may act in an organization nobody selected,
+  and a permission class that raises turns a 403 into a 500.
+
+Fixed
+~~~~~
+
+* ``MyModel.objects.create()`` and ``bulk_create()`` no longer scope the
+  queryset they are built from. Both insert without reading anything, so the
+  scoping could only ever refuse a valid call: under
+  ``STRICT_ORGANIZATION_FILTER`` they raised with nothing selected -- including
+  ``create(organization=organization)``, which names its organization outright,
+  and every ``instance.related_set.create(...)``, which Django routes through
+  the same method. Which organization the row lands in is unchanged, and
+  ``save()`` still refuses when none can be resolved. ``get_or_create()`` and
+  ``update_or_create()`` are untouched: they look a row up first, and that
+  lookup is exactly the one that must not span tenants.
+
+Security
+~~~~~~~~
+
+* **A deactivated membership now grants nothing.**
+  ``AbstractOrganizationMembership`` gains ``is_active`` (default ``True``), and
+  ``OrganizationModelBackend`` filters on it *in the membership lookup*. Before
+  this the field was every project's to declare, so the backend could not read
+  it: deactivating an administrator left them resolving every permission their
+  groups carried, through ``has_perm`` and every DRF permission class built on
+  it. The permission classes shipped here, and the organization list endpoint,
+  skip inactive memberships too.
+
+* **Header and session resolution check the caller's memberships.**
+  ``retrieve_by_http_header`` used to look the slug up and select it, so any
+  authenticated user could select any tenant by sending its slug. It now refuses
+  an organization the authenticated caller holds no active membership in, with
+  ``OrganizationAccessDeniedError`` (a ``PermissionDenied``, so a 403), and
+  ``retrieve_by_session`` does the same. Anonymous requests are unaffected --
+  there is no membership to check and no privilege to escalate.
+  ``retrieve_by_domain`` is untouched: the host is not the caller's to choose.
+  Turn the check off with ``VERIFY_ORGANIZATION_MEMBERSHIP = False``.
+
+* The new ``vinta_orgs.W001`` system check reports
+  ``OrganizationMiddleware`` running before ``AuthenticationMiddleware``, which
+  leaves the check above with no ``request.user`` to consult.
+
+Added
+~~~~~
+
+* ``vinta_orgs.authorization``: ``has_organization_permission(user, permission,
+  organization)`` and ``get_organization_permissions(user, organization)`` --
+  "may this user do X **in organization Y**", with Y named rather than read from
+  the context. ``has_perm`` cannot answer that: it resolves for the *bound*
+  organization, unions in the user's global permissions and groups, and
+  short-circuits for superusers. All three are privilege escalations when this
+  is the question, so ``include_global`` and ``allow_superuser`` are explicit
+  parameters, both off by default. ``has_perm`` itself keeps ``ModelBackend``
+  semantics unchanged.
+
+* ``membership_holds_permission(membership, permission)`` for a membership row
+  the caller already holds, and ``resolve_membership_permissions(memberships)``
+  for a page of them in a constant number of queries -- the backend caches per
+  ``(user, organization)``, so a list endpoint was N lookups.
+
+* ``vinta_orgs.drf.OrganizationScopedAPIViewMixin``: organization resolution for
+  DRF views, in the seam between "``request.user`` is real" and
+  ``check_permissions``. The middleware resolves before DRF authentication, so
+  with token or JWT authentication a user-dependent organization cannot be
+  resolved there at all. Binds for the request and releases in a ``finally``
+  around ``dispatch``.
+
+* ``vinta_orgs.helpers.memberships.resolve_membership_for_user`` and its
+  organization-shaped sibling: the full resolution table (0 / 1 / 2+ active
+  memberships against a named / absent / non-member organization), with
+  ``AmbiguousOrganizationError`` for a multi-organization caller who named none
+  -- a 400 rather than a silent pick by row creation order -- and
+  ``OrganizationAccessDeniedError`` for a non-member.
+  ``retrieve_by_user_membership`` is the retriever built on it, opt-in.
+
+* ``OrganizationMembershipQuerySet``, now the membership model's default
+  queryset: ``active()``, ``active_for_user(user)`` and
+  ``holding_permission('app_label.codename')`` -- the union of a membership's
+  own permission grant with the permissions its groups carry, which is what a
+  last-administrator guard has to count by. Reachable through the reverse
+  accessors as well (``user.memberships.active()``).
+
+* ``vinta_orgs.testing``: a reseed-at-setup pytest fixture
+  (``pytest_plugins = ['vinta_orgs.testing']``), a ``TransactionTestCase`` mixin
+  and ``reseed_organization_groups()``. A transactional test's flush re-emits
+  ``post_migrate`` -- rebuilding content types and permissions -- but does not
+  re-run data migrations, so seeded groups vanish for the rest of that worker's
+  session and every membership built afterwards silently holds nothing.
+  ``ORGANIZATION_GROUP_SEEDERS`` lists a project's own seeders.
+
+Migrations
+~~~~~~~~~~
+
+* ``vinta_orgs/0002_organizationmembership_is_active`` adds the column. On a
+  project that swapped ``ORGANIZATION_MEMBERSHIP_MODEL`` it is a no-op and the
+  column arrives through that app's own migration instead -- generated from the
+  abstract base, and an ``AlterField`` rather than an ``AddField`` if the
+  project already had an ``is_active`` of its own.
+
+Documentation
+~~~~~~~~~~~~~
+
+* How to empty the abstract base's ``Meta.unique_together`` and keep your own
+  named constraint.
+
+* What ``OrganizationSafeForeignKey``'s two-field shape means for fixtures --
+  ``baker.make`` refuses a model with one unless the relation is passed under
+  its declared name.
+
 0.2.0 (2026-08-12)
 ++++++++++++++++++
 

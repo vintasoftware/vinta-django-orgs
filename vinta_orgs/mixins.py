@@ -86,13 +86,13 @@ class SingleOrganizationModelMixin(models.Model):
         # documented as a manager that must not filter rows away, and pointing
         # it at the scoped manager broke each of those:
         #
-        # * ``instance.save()`` on an existing row matched nothing, so Django
-        #   fell through to an ``INSERT`` and raised ``IntegrityError`` on the
-        #   duplicate primary key -- with no organization selected and *without*
-        #   ``STRICT_ORGANIZATION_FILTER``, i.e. on the default settings.
-        # * With ``STRICT_ORGANIZATION_FILTER`` on, all four raised
-        #   ``OrganizationNotFoundError``, including saving an instance that had
-        #   been handed an explicit ``organization``.
+        # * Under ``STRICT_ORGANIZATION_FILTER`` -- the default -- all four
+        #   raised ``OrganizationNotFoundError`` with no organization selected,
+        #   including saving an instance that had been handed an explicit
+        #   ``organization``.
+        # * With the setting cleared, ``instance.save()`` on an existing row
+        #   matched nothing, so Django fell through to an ``INSERT`` and raised
+        #   ``IntegrityError`` on the duplicate primary key.
         #
         # Which of those a project hit depended on the order of its base
         # classes: ``Options.base_manager`` inherits ``base_manager_name`` from
