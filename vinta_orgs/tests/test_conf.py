@@ -23,6 +23,7 @@ from vinta_orgs.conf import (
     organization_membership_model_string,
     organization_model_string,
 )
+from vinta_orgs.helpers.organizations import organization_context
 from vinta_orgs.models import (
     AbstractOrganization,
     AbstractOrganizationMembership,
@@ -107,10 +108,16 @@ class RelationTargetTests(TestCase):
     def test_the_reverse_accessors_still_resolve(self) -> None:
         organization = get_organization_model()._default_manager.create(name='test', slug='test')
 
-        # Named on the relations in ``models.py``; a project that swaps the
-        # organization inherits them, which is what the library reads.
-        self.assertEqual(organization.memberships.count(), 0)
-        self.assertEqual(organization.organization_sites.count(), 0)
+        # ``organization_sites`` is a scoped model's reverse accessor, so it
+        # narrows to the *selected* organization on top of the relation --
+        # under ``STRICT_ORGANIZATION_FILTER`` reading it unbound raises rather
+        # than quietly answering nothing. ``memberships`` does not, which is
+        # the whole reason its manager is unscoped.
+        with organization_context(organization):
+            # Named on the relations in ``models.py``; a project that swaps the
+            # organization inherits them, which is what the library reads.
+            self.assertEqual(organization.memberships.count(), 0)
+            self.assertEqual(organization.organization_sites.count(), 0)
 
 
 class OwnerPermissionsTests(TestCase):

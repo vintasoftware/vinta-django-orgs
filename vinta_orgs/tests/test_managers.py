@@ -68,7 +68,14 @@ class SingleOrganizationModelManagerTests(TestCase):
     def test_list_original_queryset(self) -> None:
         self.assertEqual(self.articles_manager.get_original_queryset().all().count(), 8)
 
-    def test_return_nothing_if_no_organization_set_or_passed(self) -> None:
+    def test_raise_if_no_organization_set_or_passed(self) -> None:
+        clear_current_organization()
+
+        with self.assertRaises(OrganizationNotFoundError):
+            self.articles_manager.all().count()
+
+    @override_settings(SHARED_SCHEMA_ORGANIZATIONS={'STRICT_ORGANIZATION_FILTER': False})
+    def test_return_nothing_if_no_organization_set_or_passed_and_not_strict(self) -> None:
         clear_current_organization()
         self.assertEqual(self.articles_manager.all().count(), 0)
 
@@ -122,7 +129,14 @@ class MultipleOrganizationModelManagerTests(TestCase):
             len(self.tags_t1) + len(self.tags_t2) + len(self.shared_tags),
         )
 
-    def test_return_nothing_if_no_organization_set_or_passed(self) -> None:
+    def test_raise_if_no_organization_set_or_passed(self) -> None:
+        clear_current_organization()
+
+        with self.assertRaises(OrganizationNotFoundError):
+            self.tags_manager.all().count()
+
+    @override_settings(SHARED_SCHEMA_ORGANIZATIONS={'STRICT_ORGANIZATION_FILTER': False})
+    def test_return_nothing_if_no_organization_set_or_passed_and_not_strict(self) -> None:
         clear_current_organization()
         self.assertEqual(self.tags_manager.all().count(), 0)
 
@@ -170,3 +184,65 @@ class NoneTests(TestCase):
         # taking the unscoped queryset must not change that.
         with self.assertNumQueries(0):
             list(Article.objects.none())
+
+
+class CreateTests(TestCase):
+    """``objects.create()`` reads no rows, so it must not need one selected.
+
+    ``Manager.create`` is generated as ``self.get_queryset().create(...)``, and
+    under ``STRICT_ORGANIZATION_FILTER`` that scoping raised before the
+    ``INSERT`` ever ran -- including for a call that named its organization
+    outright, and for every ``instance.related_set.create(...)``, which Django
+    routes through the same method.
+    """
+
+    def setUp(self) -> None:
+        self.organization = create_organization(name='organization', slug='organization')
+        self.other_organization = create_organization(name='other', slug='other')
+        self.user = User.objects.create_user(username='author', password='x')
+        clear_current_organization()
+
+    def test_create_with_an_explicit_organization_needs_nothing_selected(self) -> None:
+        article = Article.objects.create(organization=self.organization, title='t', text='x', author=self.user)
+
+        self.assertEqual(article.organization, self.organization)
+
+    def test_create_still_takes_the_selected_organization_when_given_none(self) -> None:
+        set_current_organization(self.other_organization)
+
+        article = Article.objects.create(title='t', text='x', author=self.user)
+
+        self.assertEqual(article.organization, self.other_organization)
+
+    def test_create_still_raises_when_no_organization_can_be_resolved(self) -> None:
+        # ``save()`` is what refuses, not the queryset -- so the guarantee is
+        # unchanged and only the point at which the caller finds out moves.
+        with (
+            override_settings(SHARED_SCHEMA_ORGANIZATIONS={'DEFAULT_ORGANIZATION_SLUG': None}),
+            self.assertRaises(OrganizationNotFoundError),
+        ):
+            Article.objects.create(title='t', text='x', author=self.user)
+
+    def test_a_related_manager_create_needs_nothing_selected(self) -> None:
+        organization_site = self.organization.organization_sites.create(
+            site=baker.make('sites.Site', domain='create.example')
+        )
+
+        self.assertEqual(organization_site.organization, self.organization)
+
+    def test_bulk_create_needs_nothing_selected(self) -> None:
+        articles = [
+            Article(organization=self.organization, title='a', text='x', author=self.user),
+            Article(organization=self.organization, title='b', text='x', author=self.user),
+        ]
+
+        Article.objects.bulk_create(articles)
+
+        self.assertEqual(Article.original_manager.filter_by_organization(self.organization).count(), 2)
+
+    def test_get_or_create_is_deliberately_not_relaxed(self) -> None:
+        # The dangerous one: it *looks a row up*, and with nothing selected that
+        # lookup spans every organization -- so it can hand back somebody
+        # else's row and let the caller write to it.
+        with self.assertRaises(OrganizationNotFoundError):
+            Article.objects.get_or_create(title='t', defaults={'text': 'x', 'author': self.user})

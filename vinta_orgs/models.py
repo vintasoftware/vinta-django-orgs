@@ -21,7 +21,7 @@ from django.db.models.signals import post_delete
 from model_utils.models import TimeStampedModel
 
 from vinta_orgs.conf import organization_model_string
-from vinta_orgs.managers import SingleOrganizationUnscopedManager
+from vinta_orgs.managers import OrganizationMembershipUnscopedManager
 from vinta_orgs.mixins import SingleOrganizationModelMixin
 
 
@@ -86,6 +86,37 @@ class AbstractOrganizationMembership(TimeStampedModel, SingleOrganizationModelMi
     groups = models.ManyToManyField('auth.Group', related_name='user_organization_groups', blank=True)
     permissions = models.ManyToManyField('auth.Permission', related_name='user_organization_permissions', blank=True)
 
+    # The membership's soft delete, and the base's because every consumer needs
+    # it to mean the same thing.
+    #
+    # Removing a member without deleting the row is what almost every project
+    # does -- you want the audit trail, and the invitations, the audit rows and
+    # the billing seats all point at it. Left to each project, the field is a
+    # *marker* rather than a *gate*: the permission backend knew nothing about
+    # it, so a deactivated administrator kept resolving every permission their
+    # groups carried, through ``has_perm`` and through every DRF permission
+    # class built on it. That is the widest grant there is, arrived at by an
+    # operation whose whole premise is that it takes rights away.
+    #
+    # The alternative -- a ``get_membership_queryset()`` hook, so a project
+    # supplies its own predicate -- puts a security decision in the hands of
+    # every consumer and fails silently when they leave it alone. This is a
+    # migration for existing projects; silent privilege retention is worse.
+    #
+    # The gate lives in the lookup (see
+    # ``OrganizationModelBackend._get_membership``) rather than in a "clear the
+    # groups when a membership is deactivated" side effect: deactivation happens
+    # on more than one code path, a cleared-groups approach has to be remembered
+    # on every one of them, and reactivation would then need a restore step that
+    # knows what to put back. A filter cannot be forgotten.
+    is_active = models.BooleanField(
+        default=True,
+        help_text=(
+            'Unset this instead of deleting the row. An inactive membership grants nothing: it resolves no '
+            'permissions and cannot be selected as the request organization.'
+        ),
+    )
+
     # The one scoped model whose default manager must *not* scope.
     #
     # A membership is metadata about the tenancy rather than data inside it: it
@@ -101,20 +132,28 @@ class AbstractOrganizationMembership(TimeStampedModel, SingleOrganizationModelMi
     # from ``_default_manager.__class__``, so they used to carry the scoping into
     # exactly the lookups that cannot work under it.
     #
-    # ``SingleOrganizationUnscopedManager`` rather than a plain ``Manager`` so
-    # the scoping methods stay available on both the manager and its querysets:
-    # ``objects.filter_by_organization(org)`` and
+    # ``OrganizationMembershipUnscopedManager`` rather than a plain ``Manager``
+    # so the scoping methods stay available on both the manager and its
+    # querysets: ``objects.filter_by_organization(org)`` and
     # ``user.memberships.for_current_organization()`` are how a caller that does
-    # want one organization says so. ``organization_objects``, inherited from
-    # the mixin, remains implicitly scoped for callers that prefer that.
+    # want one organization says so, and ``active()`` /
+    # ``holding_permission(...)`` are how it asks the two membership-shaped
+    # questions. ``organization_objects``, inherited from the mixin, remains
+    # implicitly scoped for callers that prefer that.
     #
     # Ignored because narrowing a manager to a *less* capable type is exactly
     # what is intended here: the mixin declares ``objects`` as the scoped
     # manager, and this replaces it with the unscoped one.
-    objects = SingleOrganizationUnscopedManager()  # type: ignore[assignment,misc]
+    objects = OrganizationMembershipUnscopedManager()  # type: ignore[assignment,misc]
 
     class Meta:
         abstract = True
+        # Emptied by a subclass that needs its own named constraint in place of
+        # this one -- five raw-SQL foreign keys binding to a constraint *by
+        # name* is the case that forced it once. ``unique_together = []``
+        # alongside a ``UniqueConstraint(fields=['user', 'organization'],
+        # name=...)`` in the subclass's ``Meta`` keeps the guarantee and moves
+        # the name under the project's control. See ``docs/usage.rst``.
         unique_together = [('user', 'organization')]
         # Spelled out rather than left to manager creation order, which would
         # otherwise pick the mixin's ``original_manager`` -- declared earlier,

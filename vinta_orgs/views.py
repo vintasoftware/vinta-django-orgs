@@ -38,7 +38,10 @@ class OrganizationListView(generics.ListCreateAPIView):
         organizations = get_organization_model()._default_manager
 
         if self.request.user.is_authenticated:
-            return organizations.filter(memberships__user=self.request.user).distinct()
+            # ``is_active`` as well as the user: a deactivated membership is
+            # kept for the audit trail and grants nothing, so the organization
+            # it points at is not one this caller may still select.
+            return organizations.filter(memberships__user=self.request.user, memberships__is_active=True).distinct()
         else:
             return organizations.none()
 
@@ -53,7 +56,10 @@ class OrganizationDetailsView(generics.RetrieveUpdateDestroyAPIView):
         organizations = get_organization_model()._default_manager
 
         if self.request.user.is_authenticated:
-            return organizations.filter(memberships__user=self.request.user).distinct()
+            # ``is_active`` as well as the user: a deactivated membership is
+            # kept for the audit trail and grants nothing, so the organization
+            # it points at is not one this caller may still select.
+            return organizations.filter(memberships__user=self.request.user, memberships__is_active=True).distinct()
         else:
             return organizations.none()
 

@@ -86,6 +86,13 @@ extra_checks = true
 module = ["model_utils.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+# ``vinta_orgs.testing`` defines its fixture only when pytest is importable, so
+# that a project running its tests any other way can still import the module.
+# The type checker must be able to read it either way.
+module = ["pytest"]
+ignore_missing_imports = true
+
 [tool.django-stubs]
 django_settings_module = "tests.settings"
 

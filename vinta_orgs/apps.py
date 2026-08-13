@@ -23,4 +23,9 @@ class OrganizationsConfig(AppConfig):
         # is the retriever, which the middleware loads lazily -- so without this
         # the cache could be filled before anything was listening to invalidate
         # it.
+        from django.core.checks import register
+
         from vinta_orgs import cache  # noqa: F401
+        from vinta_orgs.checks import check_middleware_order
+
+        register(check_middleware_order)

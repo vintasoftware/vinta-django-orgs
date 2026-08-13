@@ -259,6 +259,63 @@ class OrganizationModelBackendTests(TestCase):
         self.assertEqual(len(auth_backend.get_all_organization_permissions(self.user)), 0)
 
 
+class DeactivatedMembershipTests(TestCase):
+    """A membership that was switched off has to stop granting things.
+
+    Deactivating a member without deleting the row is what almost every project
+    does. Before ``is_active`` was on the abstract base the backend knew nothing
+    about it, so a deactivated administrator kept resolving every permission
+    their groups carried -- the widest grant there is, from the operation whose
+    whole premise is that it takes rights away.
+    """
+
+    def setUp(self) -> None:
+        self.organization = Organization.objects.create(name='test', slug='test')
+        set_current_organization(self.organization)
+        self.user = User.objects.create_user(username='test', password='test')
+        self.membership = create_membership(self.organization, self.user, groups=create_default_organization_groups())
+        self.auth_backend = OrganizationModelBackend()
+
+    def tearDown(self) -> None:
+        clear_current_organization()
+
+    def deactivate(self) -> None:
+        self.membership.is_active = False
+        self.membership.save()
+
+    def test_a_membership_is_active_by_default(self) -> None:
+        self.assertTrue(self.membership.is_active)
+
+    def test_a_deactivated_membership_resolves_no_permissions(self) -> None:
+        self.deactivate()
+
+        self.assertEqual(self.auth_backend.get_all_organization_permissions(self.user), set())
+
+    def test_a_deactivated_membership_is_not_returned_by_the_lookup(self) -> None:
+        self.deactivate()
+
+        self.assertIsNone(self.auth_backend._get_membership(self.user, self.organization))
+
+    def test_the_gate_is_in_the_query_so_the_cache_holds_nothing_usable(self) -> None:
+        self.deactivate()
+        self.auth_backend._get_membership(self.user, self.organization)
+
+        # Filtering the *result* of the lookup would leave the cache holding a
+        # row nothing is allowed to use, which is fine for a subclass and wrong
+        # here: anything reading the cache directly would find it.
+        self.assertIsNone(perm_cache(self.user, '_organization_membership_cache')[self.organization.pk])
+
+    def test_has_perm_refuses_a_deactivated_administrator(self) -> None:
+        permission = self.membership.groups.first().permissions.first()  # type: ignore[union-attr]
+        assert permission is not None
+        label = '%s.%s' % (permission.content_type.app_label, permission.codename)
+        self.assertTrue(User.objects.get(pk=self.user.pk).has_perm(label))
+
+        self.deactivate()
+
+        self.assertFalse(User.objects.get(pk=self.user.pk).has_perm(label))
+
+
 class OrganizationPermissionCacheTests(TestCase):
     """The per-organization caches have to survive an organization switch.
 

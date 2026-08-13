@@ -71,12 +71,27 @@ def _build_settings() -> dict[str, Any]:
         ),
         'ADD_ORGANIZATION_TO_SESSION': organization_settings.get('ADD_ORGANIZATION_TO_SESSION', True),
         'ORGANIZATION_HTTP_HEADER': organization_settings.get('ORGANIZATION_HTTP_HEADER', 'Organization-Slug'),
-        # When True, querying an organization-scoped model with no organization
-        # bound raises ``OrganizationNotFoundError`` instead of returning an
-        # empty queryset. Off by default because an unscoped read is harmless
-        # (it returns nothing); turn it on to catch the tasks and commands that
-        # forgot to bind an organization instead of having them report "no data".
-        'STRICT_ORGANIZATION_FILTER': organization_settings.get('STRICT_ORGANIZATION_FILTER', False),
+        # When True (the default), a retriever that reads a *caller-supplied*
+        # organization -- the header and the session, never the domain --
+        # refuses one the authenticated caller holds no active membership in.
+        # Without it, sending another tenant's slug selects that tenant.
+        # Anonymous requests are unaffected: there is no membership to check and
+        # no privilege to escalate.
+        'VERIFY_ORGANIZATION_MEMBERSHIP': organization_settings.get('VERIFY_ORGANIZATION_MEMBERSHIP', True),
+        # When True (the default), querying an organization-scoped model with no
+        # organization bound raises ``OrganizationNotFoundError`` instead of
+        # returning an empty queryset.
+        #
+        # An unbound scoped query is nearly always a bug, and "harmless, it
+        # returns nothing" is only true of reads: a ``get_or_create`` with
+        # nothing bound looks the row up across every tenant, finds one
+        # belonging to somebody else, and either hands it back or writes to it.
+        # Off, that is silent; on, it raises at the line that forgot to bind.
+        #
+        # Turning it off is a deliberate choice for a project whose unbound
+        # reads are genuinely reads -- and it trades a loud failure for a
+        # result that is indistinguishable from "no data yet".
+        'STRICT_ORGANIZATION_FILTER': organization_settings.get('STRICT_ORGANIZATION_FILTER', True),
         # When True, a paged query that ``select_related`` an
         # organization-safe relation fetches the related rows in a second query
         # instead of joining. The join matches on the organization as well as
@@ -97,6 +112,12 @@ def _build_settings() -> dict[str, Any]:
         # Bounds how long a write that bypassed Django can go uncorrected.
         'ORGANIZATION_CACHE_TIMEOUT': organization_settings.get('ORGANIZATION_CACHE_TIMEOUT', 300),
         'DEFAULT_ORGANIZATION_OWNER_PERMISSIONS': owner_permissions,
+        # Import paths of the callables that build the seeded organization
+        # groups. Read only by ``vinta_orgs.testing``, which re-runs them
+        # before every test with a database -- a transactional test's flush
+        # takes them out and nothing puts them back. Defaults to this library's
+        # own seeder; a project that seeds more groups lists all of them.
+        'ORGANIZATION_GROUP_SEEDERS': organization_settings.get('ORGANIZATION_GROUP_SEEDERS', []),
     }
 
 

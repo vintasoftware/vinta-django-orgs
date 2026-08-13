@@ -6,10 +6,15 @@ product actually needs, and stop maintaining a one-to-one companion for them.
 
 The extra fields here are the ones that pushed vinta-saas-template into building
 companion models in the first place -- a parent organization for reseller
-hierarchies, a flag for who may invite other organizations, and a soft-delete
-marker on the membership. ``parent`` in particular is why this matters: as a real
-column it can take part in a database constraint, which it cannot do from a
-separate table.
+hierarchies and a flag for who may invite other organizations. ``parent`` in
+particular is why this matters: as a real column it can take part in a database
+constraint, which it cannot do from a separate table.
+
+The membership's soft-delete marker used to be here too, and is now inherited:
+``is_active`` moved onto ``AbstractOrganizationMembership`` because the
+permission backend has to gate on it, and a field every project declares for
+itself is a field the library cannot read. ``notes`` stands in its place, so the
+swapped run still exercises a membership model with a field of its own.
 """
 
 from django.db import models
@@ -31,7 +36,7 @@ class Organization(AbstractOrganization):
 
 
 class OrganizationMembership(AbstractOrganizationMembership):
-    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)
 
     class Meta(AbstractOrganizationMembership.Meta):
         pass
