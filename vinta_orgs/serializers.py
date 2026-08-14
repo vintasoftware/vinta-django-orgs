@@ -8,7 +8,7 @@ from rest_framework import serializers
 
 from vinta_orgs.conf import get_organization_model
 from vinta_orgs.helpers.organizations import create_organization, get_current_organization, update_organization
-from vinta_orgs.models import Organization, OrganizationSite
+from vinta_orgs.models import AbstractOrganization, OrganizationSite
 
 
 class OrganizationSerializer(serializers.ModelSerializer):
@@ -20,10 +20,10 @@ class OrganizationSerializer(serializers.ModelSerializer):
         model = get_organization_model()
         fields = ['name', 'slug']
 
-    def create(self, validated_data: dict[str, Any]) -> Organization:
+    def create(self, validated_data: dict[str, Any]) -> AbstractOrganization:
         return create_organization(user=self.context['request'].user, **validated_data)
 
-    def update(self, instance: Organization, validated_data: dict[str, Any]) -> Organization:
+    def update(self, instance: AbstractOrganization, validated_data: dict[str, Any]) -> AbstractOrganization:
         return update_organization(instance, **validated_data)
 
 

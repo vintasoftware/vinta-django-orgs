@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 from django.contrib.sites.models import Site
 from django.core.cache import cache
 from django.test import RequestFactory, TestCase, override_settings
@@ -24,7 +26,7 @@ class OrganizationRetrievalCacheTests(TestCase):
 
     def _retrieve(self) -> Organization | None:
         request = RequestFactory().get('/', HTTP_HOST='test.localhost:8000')
-        return retrieve_by_domain(request)
+        return cast('Organization | None', retrieve_by_domain(request))
 
     def test_off_by_default(self) -> None:
         self._retrieve()
@@ -72,8 +74,8 @@ class OrganizationRetrievalCacheTests(TestCase):
 
         other = create_organization(name='other', slug='other')
         organization_site = OrganizationSite.original_manager.get(site__domain='test.localhost:8000')
-        organization_site.organization = other
-        organization_site.save()
+        organization_site.organization = cast('Any', other)
+        organization_site.save(unsafe_organization_update=True)
 
         self.assertEqual(self._retrieve(), other)
 

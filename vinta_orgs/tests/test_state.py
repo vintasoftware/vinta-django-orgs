@@ -1,4 +1,5 @@
 import threading
+from typing import cast
 
 from django.test import TestCase
 from django.utils.functional import SimpleLazyObject
@@ -45,7 +46,7 @@ class CurrentOrganizationTests(TestCase):
 
         def resolve() -> Organization:
             resolutions.append(1)
-            return self.organization_1
+            return cast('Organization', self.organization_1)
 
         lazy_organization = SimpleLazyObject(resolve)
 
@@ -118,7 +119,7 @@ class OrganizationContextTests(TestCase):
     def test_works_as_a_decorator(self) -> None:
         @organization_context(self.organization_1)
         def read_organization() -> Organization | None:
-            return get_current_organization()
+            return cast('Organization | None', get_current_organization())
 
         self.assertEqual(read_organization(), self.organization_1)
         self.assertIsNone(get_current_organization())
@@ -129,7 +130,7 @@ class OrganizationContextTests(TestCase):
             self.assertEqual(get_current_organization(), self.organization_1)
             if remaining:
                 countdown(remaining - 1)
-            return get_current_organization()
+            return cast('Organization | None', get_current_organization())
 
         self.assertEqual(countdown(3), self.organization_1)
         self.assertIsNone(get_current_organization())

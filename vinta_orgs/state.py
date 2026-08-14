@@ -23,27 +23,29 @@ from typing import TYPE_CHECKING, Literal, Self, TypeAlias, cast
 from django.utils.functional import LazyObject, SimpleLazyObject
 
 if TYPE_CHECKING:
-    from vinta_orgs.models import Organization
+    from vinta_orgs.models import AbstractOrganization
 
 #: What callers may bind: a loaded ``Organization``, the slug of one, or a
 #: ``LazyObject`` standing in for one -- which is what the middleware binds so
 #: a request that never reads it pays no query.
-OrganizationOrSlug: TypeAlias = 'Organization | LazyObject | str'
+OrganizationOrSlug: TypeAlias = 'AbstractOrganization | LazyObject | str'
 
 #: The token :func:`set_current_organization` hands back, which
 #: :func:`reset_current_organization` consumes.
-OrganizationToken: TypeAlias = 'Token[Organization | None]'
+OrganizationToken: TypeAlias = 'Token[AbstractOrganization | None]'
 
-_current_organization: ContextVar[Organization | None] = ContextVar('vinta_orgs.current_organization', default=None)
+_current_organization: ContextVar[AbstractOrganization | None] = ContextVar(
+    'vinta_orgs.current_organization', default=None
+)
 
 
-def _get_organization_by_slug(slug: str) -> Organization | None:
+def _get_organization_by_slug(slug: str) -> AbstractOrganization | None:
     from vinta_orgs.conf import get_organization_model
 
     return get_organization_model()._default_manager.filter(slug=slug).first()
 
 
-def _coerce_organization(organization: OrganizationOrSlug | None) -> Organization | None:
+def _coerce_organization(organization: OrganizationOrSlug | None) -> AbstractOrganization | None:
     """Normalize what callers pass into something storable.
 
     A slug is wrapped in a ``SimpleLazyObject`` so binding an organization
@@ -59,15 +61,15 @@ def _coerce_organization(organization: OrganizationOrSlug | None) -> Organizatio
         #
         # The cast is what the wrapper promises: a ``LazyObject`` bound here
         # stands in for an ``Organization`` and proxies every attribute to one.
-        return cast('Organization | None', organization)
+        return cast('AbstractOrganization | None', organization)
 
     if not isinstance(organization, str):
         return organization
 
-    return cast('Organization', SimpleLazyObject(lambda: _get_organization_by_slug(organization)))
+    return cast('AbstractOrganization', SimpleLazyObject(lambda: _get_organization_by_slug(organization)))
 
 
-def get_current_organization() -> Organization | None:
+def get_current_organization() -> AbstractOrganization | None:
     """Return the organization bound to the current context, or ``None``."""
     return _current_organization.get()
 
@@ -132,7 +134,7 @@ class organization_context(ContextDecorator):
         # calls each get their own instance instead of sharing a token stack.
         return self.__class__(self.organization)
 
-    def __enter__(self) -> Organization | None:
+    def __enter__(self) -> AbstractOrganization | None:
         self._tokens.append(set_current_organization(self.organization))
         return get_current_organization()
 

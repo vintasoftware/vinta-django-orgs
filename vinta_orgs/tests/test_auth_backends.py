@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any
 
 from django.contrib.auth.models import Permission, User
@@ -18,13 +20,13 @@ from vinta_orgs.helpers.organizations import (
 # ``tests.settings_swapped``. Type checking always runs against the default
 # settings module, so it is shown the concrete models.
 if TYPE_CHECKING:
-    from vinta_orgs.models import Organization, OrganizationMembership
+    from vinta_orgs.models import AbstractOrganizationMembership, Organization, OrganizationMembership
 else:
     Organization = get_organization_model()
     OrganizationMembership = get_organization_membership_model()
 
 
-def group_permission_count(membership: OrganizationMembership) -> int:
+def group_permission_count(membership: AbstractOrganizationMembership) -> int:
     """How many permissions the membership's first group carries."""
     group = membership.groups.first()
     assert group is not None

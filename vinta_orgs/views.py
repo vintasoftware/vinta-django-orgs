@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from django.db import transaction
 from django.db.models import QuerySet
@@ -12,7 +12,7 @@ from rest_framework.serializers import BaseSerializer
 
 from vinta_orgs.conf import get_organization_model
 from vinta_orgs.helpers.organizations import get_current_organization
-from vinta_orgs.models import Organization, OrganizationSite
+from vinta_orgs.models import AbstractOrganization, OrganizationSite
 from vinta_orgs.permissions import DjangoOrganizationModelPermissions
 from vinta_orgs.settings import get_setting
 from vinta_orgs.utils import import_from_string
@@ -34,8 +34,8 @@ class OrganizationListView(generics.ListCreateAPIView):
     def get_serializer_class(self) -> type[BaseSerializer[Any]]:
         return import_from_string(get_setting('ORGANIZATION_SERIALIZER'))
 
-    def get_queryset(self) -> QuerySet[Organization]:
-        organizations = get_organization_model()._default_manager
+    def get_queryset(self) -> QuerySet[AbstractOrganization]:
+        organizations = cast('Any', get_organization_model()._default_manager)
 
         if self.request.user.is_authenticated:
             # ``is_active`` as well as the user: a deactivated membership is
@@ -52,8 +52,8 @@ class OrganizationDetailsView(generics.RetrieveUpdateDestroyAPIView):
     def get_serializer_class(self) -> type[BaseSerializer[Any]]:
         return import_from_string(get_setting('ORGANIZATION_SERIALIZER'))
 
-    def get_queryset(self) -> QuerySet[Organization]:
-        organizations = get_organization_model()._default_manager
+    def get_queryset(self) -> QuerySet[AbstractOrganization]:
+        organizations = cast('Any', get_organization_model()._default_manager)
 
         if self.request.user.is_authenticated:
             # ``is_active`` as well as the user: a deactivated membership is
@@ -63,7 +63,7 @@ class OrganizationDetailsView(generics.RetrieveUpdateDestroyAPIView):
         else:
             return organizations.none()
 
-    def get_object(self) -> Organization:
+    def get_object(self) -> AbstractOrganization:
         # The organization the request is already bound to, so the detail route
         # needs no primary key of its own.
         organization = get_current_organization()

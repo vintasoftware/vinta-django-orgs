@@ -8,6 +8,13 @@ class OrganizationNotFoundError(Exception):
         super().__init__(message)
 
 
+class OrganizationCannotBeUpdatedError(Exception):
+    """A write tried to move an existing row to another organization."""
+
+    def __init__(self, message: str = '`organization` cannot be updated.') -> None:
+        super().__init__(message)
+
+
 class AmbiguousOrganizationError(BadRequest):
     """The caller belongs to several organizations and named none of them.
 

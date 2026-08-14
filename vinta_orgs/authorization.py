@@ -55,18 +55,20 @@ if TYPE_CHECKING:
     from django.contrib.auth.models import Permission
 
     from vinta_orgs.auth_backends import AnyUser
-    from vinta_orgs.models import Organization, OrganizationMembership
+    from vinta_orgs.models import AbstractOrganization, AbstractOrganizationMembership
 
 
-def _organization_by_pk(organization_pk: Any) -> Organization | None:
+def _organization_by_pk(organization_pk: Any) -> AbstractOrganization | None:
     """Load the organization to bind when the caller only had its primary key."""
-    organization: Organization | None = get_organization_model()._default_manager.filter(pk=organization_pk).first()
+    organization: AbstractOrganization | None = (
+        get_organization_model()._default_manager.filter(pk=organization_pk).first()
+    )
     return organization
 
 
 def get_organization_permissions(
     user: AnyUser | None,
-    organization: Organization | Any,
+    organization: AbstractOrganization | Any,
     *,
     include_global: bool = False,
     allow_superuser: bool = False,
@@ -95,11 +97,11 @@ def get_organization_permissions(
     # ``hasattr(..., 'pk')`` rather than an ``isinstance`` check: callers pass an
     # ``Organization``, a ``LazyObject`` standing in for one (which proxies
     # ``pk``), or a bare primary key -- which is not always an ``int``.
-    target: Organization | None
+    target: AbstractOrganization | None
     organization_pk: Any
 
     if hasattr(organization, 'pk'):
-        target = cast('Organization', organization)
+        target = cast('AbstractOrganization', organization)
         organization_pk = target.pk
     elif isinstance(organization, LazyObject):
         # A lazy stand-in that resolved to nothing. The middleware binds one of
@@ -134,7 +136,7 @@ def get_organization_permissions(
 
 def _resolve(
     user: AnyUser,
-    organization: Organization,
+    organization: AbstractOrganization,
     *,
     include_global: bool,
     allow_superuser: bool,
@@ -159,7 +161,7 @@ def _resolve(
 def has_organization_permission(
     user: AnyUser | None,
     permission: str,
-    organization: Organization | Any,
+    organization: AbstractOrganization | Any,
     *,
     include_global: bool = False,
     allow_superuser: bool = False,
@@ -187,7 +189,7 @@ def has_organization_permission(
     )
 
 
-def membership_holds_permission(membership: OrganizationMembership, permission: str) -> bool:
+def membership_holds_permission(membership: AbstractOrganizationMembership, permission: str) -> bool:
     """Whether **this membership row** carries ``permission``.
 
     The membership-shaped sibling of :func:`has_organization_permission`, for
@@ -216,7 +218,9 @@ def membership_holds_permission(membership: OrganizationMembership, permission: 
     return filter_memberships_holding_permission(memberships, permission).exists()
 
 
-def resolve_membership_permissions(memberships: Iterable[OrganizationMembership]) -> dict[Any, list[str]]:
+def resolve_membership_permissions(
+    memberships: Iterable[AbstractOrganizationMembership],
+) -> dict[Any, list[str]]:
     """``{membership pk: sorted permission labels}`` for a whole page of memberships.
 
     The batch read of exactly what

@@ -42,12 +42,49 @@ each side.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from django.core.exceptions import FieldDoesNotExist
 from django.db import models
 from django.db.models.fields.related import ForeignObject
-from django.db.models.fields.related_descriptors import ReverseOneToOneDescriptor
+from django.db.models.fields.related_descriptors import ForwardManyToOneDescriptor, ReverseOneToOneDescriptor
+
+_RelatedModelT = TypeVar('_RelatedModelT', bound=models.Model)
+
+if TYPE_CHECKING:
+    _OrganizationSafeRelationBase = models.Field[_RelatedModelT, _RelatedModelT]
+else:
+    _OrganizationSafeRelationBase = models.Field
+
+
+class OrganizationSafeForwardManyToOneDescriptor(ForwardManyToOneDescriptor):
+    """Preserve the source organization when a safe relation is cleared.
+
+    Django's descriptor normally writes ``None`` to every local join column.
+    That is correct for a generic ``ForeignObject``, but one of this relation's
+    columns is the row's tenant key rather than part of the nullable target key.
+    """
+
+    def __set__(self, instance: models.Model, value: models.Model | None) -> None:
+        if value is not None:
+            super().__set__(instance, value)
+            return
+
+        remote_field = self.field.remote_field
+        related = self.field.get_cached_value(instance, default=None)
+
+        if related is not None:
+            remote_field.set_cached_value(related, None)
+
+        organization_field_name = cast('Any', self.field).organization_field_name
+
+        for local_field, _remote_field in self.field.related_fields:
+            if local_field.name != organization_field_name:
+                # Use the attname so a concrete ForeignKey's descriptor also
+                # invalidates its own cached related instance.
+                setattr(instance, local_field.attname, None)
+
+        self.field.set_cached_value(instance, None)
 
 
 class OrganizationSafeOneToOneObject(ForeignObject):
@@ -62,18 +99,20 @@ class OrganizationSafeOneToOneObject(ForeignObject):
 
     one_to_one = True
     many_to_one = False
+    forward_related_accessor_class = OrganizationSafeForwardManyToOneDescriptor
     # Deliberately not the ``ReverseManyToOneDescriptor`` the base class
     # declares -- swapping in the one-to-one descriptor is the whole point of
     # this subclass, and the two are siblings rather than subclasses.
     related_accessor_class: type[Any] = ReverseOneToOneDescriptor
 
 
-class OrganizationSafeRelation:
+class OrganizationSafeRelation(_OrganizationSafeRelationBase):
     """Contributes the concrete relation plus its organization-checked twin.
 
-    Not a field itself: it is never registered on the model, it only implements
-    ``contribute_to_class`` so ``ModelBase`` calls it while building the class.
-    That is what lets one declaration turn into two fields.
+    The declaration subclasses ``Field`` so django-stubs treats it like a model
+    field, but it is never registered under its own identity. Its
+    ``contribute_to_class`` implementation instead installs the two fields
+    described above.
     """
 
     #: The concrete relation contributed as ``<name>_fk``.
@@ -90,7 +129,7 @@ class OrganizationSafeRelation:
 
     def __init__(
         self,
-        to: type[models.Model] | str,
+        to: type[_RelatedModelT] | str,
         on_delete: Callable[..., Any] = models.CASCADE,
         related_name: str | None = None,
         null: bool = False,
@@ -99,6 +138,9 @@ class OrganizationSafeRelation:
         organization_field: str = 'organization',
         **kwargs: Any,
     ) -> None:
+        # The declaration is a ``Field`` for django-stubs and model-declaration
+        # introspection, but contributes only the two fields built below.
+        super().__init__(null=null, blank=blank, help_text=help_text)
         self.to = to
         self.on_delete = on_delete
         self.related_name = related_name
@@ -108,7 +150,9 @@ class OrganizationSafeRelation:
         self.organization_field = organization_field
         self.extra_kwargs = kwargs
 
-    def contribute_to_class(self, cls: type[models.Model], name: str, **kwargs: Any) -> None:
+    def contribute_to_class(
+        self, cls: type[models.Model], name: str, private_only: bool = False, **kwargs: Any
+    ) -> None:
         concrete_name = '%s_fk' % name
         related_name = self.related_name or '%s%s' % (name, self.default_related_name_suffix)
 
@@ -138,6 +182,11 @@ class OrganizationSafeRelation:
             null=self.null,
             **self.foreign_object_kwargs,
         )
+        cast('Any', safe_field).organization_field_name = self.organization_field
+        # Kept on the field instance rather than expressed as a new
+        # ``ForeignObject`` subclass, so adopting the safer descriptor does not
+        # change the field's deconstruction path and manufacture migrations.
+        safe_field.forward_related_accessor_class = OrganizationSafeForwardManyToOneDescriptor
         safe_field.contribute_to_class(cls, name)
 
 

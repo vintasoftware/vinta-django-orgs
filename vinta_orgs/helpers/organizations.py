@@ -18,7 +18,7 @@ from vinta_orgs.state import (  # noqa: F401
 )
 
 if TYPE_CHECKING:
-    from vinta_orgs.models import Organization
+    from vinta_orgs.models import AbstractOrganization
 
 
 def create_organization(
@@ -26,7 +26,7 @@ def create_organization(
     slug: str,
     domains: Iterable[str] | None = None,
     user: AbstractBaseUser | None = None,
-) -> Organization:
+) -> AbstractOrganization:
     from vinta_orgs.conf import get_organization_model
 
     with transaction.atomic():
@@ -34,19 +34,21 @@ def create_organization(
 
         for domain in domains or []:
             site = Site.objects.create(name=name, domain=domain)
-            organization.organization_sites.create(site=site)
+            cast('Any', organization).organization_sites.create(site=site)
 
         if user:
             # ``AUTH_USER_MODEL`` is whatever the project installing this app
             # configured; the type checker only ever sees the one this
             # repository's settings point at.
-            rel = organization.memberships.create(user=cast('Any', user))
+            rel = cast('Any', organization).memberships.create(user=cast('Any', user))
             rel.groups.add(create_default_organization_groups()[0])
 
         return organization
 
 
-def update_organization(organization: Organization, name: str | None = None, slug: str | None = None) -> Organization:
+def update_organization(
+    organization: AbstractOrganization, name: str | None = None, slug: str | None = None
+) -> AbstractOrganization:
     with transaction.atomic():
         organization.name = name if name else organization.name
         organization.slug = slug if slug else organization.slug

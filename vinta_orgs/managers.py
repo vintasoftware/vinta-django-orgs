@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import contextlib
+from collections.abc import Iterator, Mapping
+from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
 from django.db.models import Manager, QuerySet
@@ -14,7 +17,7 @@ from vinta_orgs.querysets import (
 )
 
 if TYPE_CHECKING:
-    from vinta_orgs.models import Organization
+    from vinta_orgs.models import AbstractOrganization
 
     class _ManagerBase(Manager[Any]):
         """What the mixin needs from the manager it is combined with.
@@ -28,6 +31,24 @@ if TYPE_CHECKING:
         def get_queryset(self, *args: Any, **kwargs: Any) -> QuerySet[Any]: ...
 else:
     _ManagerBase = object
+
+
+_default_manager_is_unscoped: ContextVar[bool] = ContextVar('vinta_orgs.default_manager_is_unscoped', default=False)
+
+
+@contextlib.contextmanager
+def unscoped_default_manager() -> Iterator[None]:
+    """Temporarily make every scoped default manager return its original queryset.
+
+    This is intentionally process-wide in meaning but context-local in storage.
+    Keep its scope to a Django internal call that offers no queryset override,
+    such as ``ForeignKey.formfield()``.
+    """
+    token = _default_manager_is_unscoped.set(True)
+    try:
+        yield
+    finally:
+        _default_manager_is_unscoped.reset(token)
 
 
 class OrganizationScopedManagerMixin(_ManagerBase):
@@ -58,8 +79,18 @@ class OrganizationScopedManagerMixin(_ManagerBase):
         """Readable alias for :meth:`get_original_queryset`."""
         return self.get_original_queryset(*args, **kwargs)
 
-    def get_queryset(self, organization: Organization | None = None, *args: Any, **kwargs: Any) -> QuerySet[Any]:
+    def get_queryset(
+        self, organization: AbstractOrganization | None = None, *args: Any, **kwargs: Any
+    ) -> QuerySet[Any]:
         queryset = self.get_original_queryset(*args, **kwargs)
+
+        # Django-generated reverse and many-to-many managers carry the source
+        # instance and add their relation filter after this method returns. That
+        # filter is the authority for an explicit instance traversal; demanding
+        # an unrelated ambient organization makes reverse access and prefetches
+        # unusable outside a request.
+        if getattr(self, 'instance', None) is not None or _default_manager_is_unscoped.get():
+            return queryset
 
         if organization is None:
             return scope_queryset_to_current_organization(queryset, self.organization_lookup)
@@ -91,6 +122,9 @@ class OrganizationScopedManagerMixin(_ManagerBase):
         """
         return self.get_original_queryset().create(**kwargs)
 
+    async def acreate(self, **kwargs: Any) -> Any:
+        return await self.get_original_queryset().acreate(**kwargs)
+
     def bulk_create(self, objs: Any, *args: Any, **kwargs: Any) -> Any:
         """The same, for many rows at once, and for the same reason.
 
@@ -99,6 +133,61 @@ class OrganizationScopedManagerMixin(_ManagerBase):
         method existed and is not changed by it.
         """
         return self.get_original_queryset().bulk_create(objs, *args, **kwargs)
+
+    async def abulk_create(self, objs: Any, *args: Any, **kwargs: Any) -> Any:
+        return await self.get_original_queryset().abulk_create(objs, *args, **kwargs)
+
+    @staticmethod
+    def _names_an_organization(kwargs: dict[str, Any] | None) -> bool:
+        if not kwargs:
+            return False
+        return any(kwargs.get(name) is not None for name in ('organization', 'organization_id'))
+
+    def get_or_create(self, defaults: Mapping[str, Any] | None = None, **kwargs: Any) -> Any:
+        # Defaults do not constrain the lookup and therefore cannot authorize
+        # widening it across organizations.
+        queryset = self.get_original_queryset() if self._names_an_organization(kwargs) else self.get_queryset()
+        return queryset.get_or_create(defaults=defaults, **kwargs)
+
+    async def aget_or_create(self, defaults: Mapping[str, Any] | None = None, **kwargs: Any) -> Any:
+        queryset = self.get_original_queryset() if self._names_an_organization(kwargs) else self.get_queryset()
+        return await queryset.aget_or_create(defaults=defaults, **kwargs)
+
+    def update_or_create(
+        self,
+        defaults: Mapping[str, Any] | None = None,
+        create_defaults: Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        unsafe_organization_update = kwargs.pop('unsafe_organization_update', False)
+        queryset = self.get_original_queryset() if self._names_an_organization(kwargs) else self.get_queryset()
+        return queryset.update_or_create(
+            defaults=defaults,
+            create_defaults=create_defaults,
+            unsafe_organization_update=unsafe_organization_update,
+            **kwargs,
+        )
+
+    async def aupdate_or_create(
+        self,
+        defaults: Mapping[str, Any] | None = None,
+        create_defaults: Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        unsafe_organization_update = kwargs.pop('unsafe_organization_update', False)
+        queryset = self.get_original_queryset() if self._names_an_organization(kwargs) else self.get_queryset()
+        return await queryset.aupdate_or_create(
+            defaults=defaults,
+            create_defaults=create_defaults,
+            unsafe_organization_update=unsafe_organization_update,
+            **kwargs,
+        )
+
+    def bulk_update(self, objs: Any, fields: Any, *args: Any, **kwargs: Any) -> Any:
+        return self.get_original_queryset().bulk_update(objs, fields, *args, **kwargs)
+
+    async def abulk_update(self, objs: Any, fields: Any, *args: Any, **kwargs: Any) -> Any:
+        return await self.get_original_queryset().abulk_update(objs, fields, *args, **kwargs)
 
     def none(self, *args: Any, **kwargs: Any) -> QuerySet[Any]:
         """An empty queryset, with no organization needing to be selected.
@@ -120,12 +209,12 @@ class OrganizationScopedManagerMixin(_ManagerBase):
         """
         return self.get_original_queryset(*args, **kwargs).none()
 
-    def filter_by_organization(self, organization: Organization, *args: Any, **kwargs: Any) -> QuerySet[Any]:
+    def filter_by_organization(self, organization: AbstractOrganization, *args: Any, **kwargs: Any) -> QuerySet[Any]:
         return filter_queryset_by_organization(
             self.get_original_queryset(*args, **kwargs), organization, self.organization_lookup
         )
 
-    def exclude_by_organization(self, organization: Organization, *args: Any, **kwargs: Any) -> QuerySet[Any]:
+    def exclude_by_organization(self, organization: AbstractOrganization, *args: Any, **kwargs: Any) -> QuerySet[Any]:
         return exclude_queryset_by_organization(
             self.get_original_queryset(*args, **kwargs), organization, self.organization_lookup
         )

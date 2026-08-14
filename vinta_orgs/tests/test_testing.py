@@ -6,6 +6,8 @@ a data migration wrote. This is the test that a seeded group survives that --
 and the one that fails if the seeder ever stops being idempotent.
 """
 
+from typing import TYPE_CHECKING
+
 from django.contrib.auth.models import Group, User
 from django.test import TestCase, TransactionTestCase, override_settings
 
@@ -18,7 +20,10 @@ from vinta_orgs.testing import (
     reseed_organization_groups,
 )
 
-Organization = get_organization_model()
+if TYPE_CHECKING:
+    from vinta_orgs.models import Organization
+else:
+    Organization = get_organization_model()
 
 _seeder_calls: list[str] = []
 

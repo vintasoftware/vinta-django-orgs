@@ -18,7 +18,7 @@ from vinta_orgs.state import (
 from vinta_orgs.utils import import_from_string
 
 if TYPE_CHECKING:
-    from vinta_orgs.models import Organization
+    from vinta_orgs.models import AbstractOrganization
 
 
 class OrganizationRequest(HttpRequest):
@@ -35,11 +35,11 @@ class OrganizationRequest(HttpRequest):
     """
 
     #: The organization this request belongs to, resolved on first read.
-    organization: Organization | None
+    organization: AbstractOrganization | None
     #: Memoizes :func:`get_organization` for the life of the request.
-    _cached_organization: Organization | None
+    _cached_organization: AbstractOrganization | None
     #: Whatever was bound before the request started, used as a fallback.
-    _organization_before_request: Organization | None
+    _organization_before_request: AbstractOrganization | None
     #: Restores that previous binding once the response is on its way out.
     _organization_token: OrganizationToken
 
@@ -47,7 +47,7 @@ class OrganizationRequest(HttpRequest):
 _UNSET: Any = object()
 
 
-def get_organization(request: HttpRequest) -> Organization | None:
+def get_organization(request: HttpRequest) -> AbstractOrganization | None:
     """Resolve the organization this request belongs to, at most once per request."""
     stashed = cast('OrganizationRequest', request)
 
@@ -57,7 +57,7 @@ def get_organization(request: HttpRequest) -> Organization | None:
     return stashed._cached_organization
 
 
-def _retrieve_organization(request: HttpRequest) -> Organization | None:
+def _retrieve_organization(request: HttpRequest) -> AbstractOrganization | None:
     for organization_retriever in get_setting('ORGANIZATION_RETRIEVERS'):
         organization = import_from_string(organization_retriever)(request)
 
@@ -73,7 +73,7 @@ def _retrieve_organization(request: HttpRequest) -> Organization | None:
                 except AttributeError:
                     pass
 
-            return cast('Organization', organization)
+            return cast('AbstractOrganization', organization)
 
     # No retriever recognized the request. Fall back to whatever was bound to
     # this context *before* the request started -- an organization set by a
@@ -84,7 +84,7 @@ def _retrieve_organization(request: HttpRequest) -> Organization | None:
     if fallback is _UNSET:
         fallback = get_current_organization()
 
-    return cast('Organization | None', fallback)
+    return cast('AbstractOrganization | None', fallback)
 
 
 class OrganizationMiddleware:
@@ -92,11 +92,11 @@ class OrganizationMiddleware:
         self.get_response = get_response
 
     @classmethod
-    def get_current_organization(cls) -> Organization | None:
+    def get_current_organization(cls) -> AbstractOrganization | None:
         return get_current_organization()
 
     @classmethod
-    def set_organization(cls, organization: Organization | str | None) -> OrganizationToken:
+    def set_organization(cls, organization: AbstractOrganization | str | None) -> OrganizationToken:
         return set_current_organization(organization)
 
     @classmethod
@@ -107,7 +107,7 @@ class OrganizationMiddleware:
         stashed = cast('OrganizationRequest', request)
 
         stashed._organization_before_request = get_current_organization()
-        stashed.organization = cast('Organization', SimpleLazyObject(lambda: get_organization(request)))
+        stashed.organization = cast('AbstractOrganization', SimpleLazyObject(lambda: get_organization(request)))
         stashed._organization_token = set_current_organization(stashed.organization)
 
         return stashed

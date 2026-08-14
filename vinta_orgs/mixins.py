@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
 
-from django.db import models
+from asgiref.sync import sync_to_async
+from django.db import models, router, transaction
 from django.db.models.signals import class_prepared
 from django.dispatch import receiver
 
+from vinta_orgs._organization_updates import organization_update_is_allowed
 from vinta_orgs.conf import get_organization_model, organization_model_string
-from vinta_orgs.exceptions import OrganizationNotFoundError
+from vinta_orgs.exceptions import OrganizationCannotBeUpdatedError, OrganizationNotFoundError
 from vinta_orgs.fields import expand_safe_relation_field_names, rewrite_safe_relation_kwargs
 from vinta_orgs.helpers.organizations import get_current_organization
 from vinta_orgs.managers import (
@@ -15,14 +17,15 @@ from vinta_orgs.managers import (
     MultipleOrganizationsUnscopedManager,
     SingleOrganizationModelManager,
     SingleOrganizationUnscopedManager,
+    unscoped_default_manager,
 )
 from vinta_orgs.settings import get_setting
 
 if TYPE_CHECKING:
-    from vinta_orgs.models import Organization
+    from vinta_orgs.models import AbstractOrganization
 
 
-def get_default_organization() -> Organization | None:
+def get_default_organization() -> AbstractOrganization | None:
     slug = get_setting('DEFAULT_ORGANIZATION_SLUG')
 
     # ``DEFAULT_ORGANIZATION_SLUG = None`` is how a project says it has no
@@ -115,6 +118,8 @@ class SingleOrganizationModelMixin(models.Model):
         super().__init__(*args, **rewrite_safe_relation_kwargs(self.__class__, kwargs, rewrite_instances=False))
 
     def save(self, *args: Any, **kwargs: Any) -> None:
+        unsafe_organization_update = kwargs.pop('unsafe_organization_update', False)
+
         if kwargs.get('update_fields') is not None:
             # ``update_fields=['article']`` names the safe relation, which is
             # not writable; it stands for ``article_fk`` and ``organization``.
@@ -136,7 +141,48 @@ class SingleOrganizationModelMixin(models.Model):
             # save does not go back to the database for it.
             self.organization = organization
 
+        update_fields = kwargs.get('update_fields')
+        writes_organization = update_fields is None or bool(
+            {'organization', 'organization_id'}.intersection(update_fields)
+        )
+        force_insert = kwargs.get('force_insert', False)
+
+        if (
+            writes_organization
+            and cast('Any', self)._is_pk_set()
+            and not force_insert
+            and not unsafe_organization_update
+            and not organization_update_is_allowed()
+        ):
+            using = kwargs.get('using') or router.db_for_write(self.__class__, instance=self)
+
+            with transaction.atomic(using=using):
+                persisted = (
+                    self.__class__._base_manager.using(using)
+                    .select_for_update()
+                    .filter(pk=self.pk)
+                    .values_list('pk', 'organization_id')
+                    .first()
+                )
+
+                if persisted is not None and persisted[1] != self.organization_id:
+                    raise OrganizationCannotBeUpdatedError()
+
+                super().save(*args, **kwargs)
+            return
+
         super().save(*args, **kwargs)
+
+    async def asave(self, *args: Any, **kwargs: Any) -> None:
+        return await sync_to_async(self.save)(*args, **kwargs)
+
+    def validate_unique(self, exclude: Any = None) -> None:
+        with unscoped_default_manager():
+            super().validate_unique(exclude=exclude)
+
+    def validate_constraints(self, exclude: Any = None) -> None:
+        with unscoped_default_manager():
+            super().validate_constraints(exclude=exclude)
 
 
 def organization_index_fields(model: type[models.Model]) -> list[str]:
@@ -199,7 +245,9 @@ def add_organization_index(sender: type[models.Model], **kwargs: Any) -> None:
 class MultipleOrganizationsModelMixin(models.Model):
     # Annotated explicitly: the target is a runtime call rather than a literal,
     # so the type checker cannot infer what this relates to.
-    organizations: models.ManyToManyField[Organization, Any] = models.ManyToManyField(organization_model_string())
+    organizations: models.ManyToManyField[AbstractOrganization, Any] = models.ManyToManyField(
+        organization_model_string()
+    )
 
     objects = MultipleOrganizationModelManager()
 
@@ -222,3 +270,11 @@ class MultipleOrganizationsModelMixin(models.Model):
 
         super().save(*args, **kwargs)
         self.organizations.add(organization)
+
+    def validate_unique(self, exclude: Any = None) -> None:
+        with unscoped_default_manager():
+            super().validate_unique(exclude=exclude)
+
+    def validate_constraints(self, exclude: Any = None) -> None:
+        with unscoped_default_manager():
+            super().validate_constraints(exclude=exclude)

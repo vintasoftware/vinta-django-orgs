@@ -45,14 +45,21 @@ class SingleOrganizationModelMixinQueryCountTests(TestCase):
             article.save()
 
     def test_save_with_an_explicit_organization_makes_a_single_query(self) -> None:
-        article = Article(organization=self.organization, title='Test Article', text='Test', author=self.user)
+        article = Article(
+            organization=cast('Any', self.organization), title='Test Article', text='Test', author=self.user
+        )
 
         with self.assertNumQueries(1):
             article.save()
 
     def test_bulk_create_makes_a_single_query(self) -> None:
         articles = [
-            Article(organization=self.organization, title='Article %d' % i, text='Test', author=self.user)
+            Article(
+                organization=cast('Any', self.organization),
+                title='Article %d' % i,
+                text='Test',
+                author=self.user,
+            )
             for i in range(10)
         ]
 
@@ -103,7 +110,7 @@ class SingleOrganizationModelMixinSaveTests(TestCase):
         other = create_organization(name='other', slug='other')
         set_current_organization(self.organization.slug)
 
-        article = Article(organization=other, title='Test Article', text='Test', author=self.user)
+        article = Article(organization=cast('Any', other), title='Test Article', text='Test', author=self.user)
         article.save()
 
         self.assertEqual(article.organization, other)
@@ -202,7 +209,9 @@ class BaseManagerTests(TestCase):
 
     @override_settings(SHARED_SCHEMA_ORGANIZATIONS={'STRICT_ORGANIZATION_FILTER': True})
     def test_strict_filter_leaves_an_explicitly_organized_save_alone(self) -> None:
-        article = Article(organization=self.organization, title='Test Article', text='Test', author=self.user)
+        article = Article(
+            organization=cast('Any', self.organization), title='Test Article', text='Test', author=self.user
+        )
 
         article.save()
 

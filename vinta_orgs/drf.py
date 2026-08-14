@@ -41,7 +41,7 @@ from typing import TYPE_CHECKING, Any, cast
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from vinta_orgs.exceptions import AmbiguousOrganizationError, OrganizationAccessDeniedError
-from vinta_orgs.helpers.memberships import resolve_membership_for_user
+from vinta_orgs.helpers.memberships import OrganizationSelection, resolve_membership_for_user
 from vinta_orgs.settings import get_setting
 from vinta_orgs.state import OrganizationToken, reset_current_organization, set_current_organization
 
@@ -49,7 +49,7 @@ if TYPE_CHECKING:
     from django.http import HttpResponse
     from rest_framework.request import Request
 
-    from vinta_orgs.models import Organization, OrganizationMembership
+    from vinta_orgs.models import AbstractOrganization, AbstractOrganizationMembership
 
 
 class OrganizationScopedAPIViewMixin:
@@ -96,7 +96,7 @@ class OrganizationScopedAPIViewMixin:
 
         return action is not None and action in self.organization_optional_actions
 
-    def get_organization_slug(self, request: Request) -> str | None:
+    def get_organization_slug(self, request: Request) -> OrganizationSelection:
         """What the caller named, if anything. Override to read it from elsewhere.
 
         Reads the ``ORGANIZATION_HTTP_HEADER`` header, so a project that
@@ -122,7 +122,7 @@ class OrganizationScopedAPIViewMixin:
         through to Django's own ``BadRequest`` handling and be answered with an
         HTML 400 in the middle of a JSON API.
         """
-        membership: OrganizationMembership | None
+        membership: AbstractOrganizationMembership | None
 
         try:
             membership = resolve_membership_for_user(
@@ -138,7 +138,7 @@ class OrganizationScopedAPIViewMixin:
         request.organization_membership = membership  # type: ignore[attr-defined]
         request.organization = membership.organization if membership is not None else None  # type: ignore[attr-defined]
 
-    def bind_organization(self, organization: Organization | None) -> None:
+    def bind_organization(self, organization: AbstractOrganization | None) -> None:
         """Bind ``organization`` -- possibly ``None`` -- for the rest of the request.
 
         ``None`` is bound rather than skipped. A caller who resolved to no

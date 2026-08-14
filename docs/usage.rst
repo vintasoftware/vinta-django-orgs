@@ -195,6 +195,30 @@ while iterating:
     for instance in MyModel.objects.with_organization():
         print(instance.organization.name)  # no query per row
 
+Django's reverse managers are scoped by the instance they are attached to, not
+by ambient state. ``article.comments.all()`` and a prefetch of ``comments``
+therefore work in a task or admin view with no organization selected, and still
+mean "the comments related to this article" if a different organization is
+selected. For an organization-safe relation, the instance organization is part
+of that reverse relation's predicate.
+
+Two Django internals reach for ``Model._default_manager`` without accepting a
+queryset override. Model uniqueness and constraint validation are handled by
+the model mixins automatically. Wrap the similarly eager admin form-field call
+in the public escape hatch:
+
+.. code:: python
+
+    from vinta_orgs.managers import unscoped_default_manager
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        with unscoped_default_manager():
+            return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+Keep the block around that single framework call. Ordinary application reads
+should continue to use ``filter_by_organization()``, ``unscoped()`` or
+``original_manager`` explicitly.
+
 
 Memberships are not scoped
 --------------------------
@@ -399,11 +423,19 @@ default, while writes keep looking like an ordinary foreign key:
 Passing the instance is preferred over the id: Django's descriptor copies the
 target's organization onto the new row, so the two cannot drift apart.
 
+For a nullable safe relation, assigning ``None`` clears only the target key:
+
+.. code:: python
+
+    comment.article = None
+    assert comment.article_fk_id is None
+    assert comment.organization_id is not None
+
 The same reasoning decides what each write persists. ``save(update_fields=…)``
 and ``bulk_update`` have an instance in hand, whose organization the descriptor
-has already kept in step, so naming the relation writes *both* of its columns --
-reassigning to an article in another organization moves the comment along with
-it, exactly as a full ``save()`` would.
+has already kept in step, so naming the relation writes *both* of its columns.
+If that would move an existing row into another organization, the write raises
+``OrganizationCannotBeUpdatedError``.
 
 A queryset ``update()`` has no instance and matches many rows at once, so it
 writes the key only. Writing the organization there would silently move every
@@ -416,6 +448,33 @@ Both models must be organization-aware, since the join reads ``organization_id``
 on each side. Note that the check is at the ORM level -- the database is not
 stopping a mismatched row from being written by raw SQL, it just will not be
 readable through the relation.
+
+Relocating an existing row
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Organization ownership is immutable by default across every ORM update path:
+``save`` / ``asave``, ``update`` / ``aupdate``, ``bulk_update`` /
+``abulk_update``, ``update_or_create`` / ``aupdate_or_create``, and the conflict
+update mode of ``bulk_create`` / ``abulk_create``. They raise
+``OrganizationCannotBeUpdatedError`` before moving the row.
+
+A deliberate maintenance operation or data migration can authorize one call:
+
+.. code:: python
+
+    invoice.save(unsafe_organization_update=True)
+    Invoice.objects.filter(pk=invoice.pk).update(
+        organization=destination,
+        unsafe_organization_update=True,
+    )
+    Invoice.objects.bulk_update(
+        invoices,
+        ['organization'],
+        unsafe_organization_update=True,
+    )
+
+The name is intentionally loud. Relocation changes which tenant can read the
+row and should not be a routine application update.
 
 Two fields, and what that means for fixtures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -610,6 +669,24 @@ Pass ``strict=False`` to turn both refusals into ``None``. That is for the
 endpoints which must work *before* an organization is selected -- the
 organization switcher, onboarding, accepting an invitation -- not a default to
 reach for.
+
+Resolvers are not required to use slugs. If application policy names an
+organization by an integer ID, UUID or external key, translate it to the
+organization's slug before calling the helper. When an identifier was supplied
+but matched no row, pass the public sentinel rather than ``None``:
+
+.. code:: python
+
+    from vinta_orgs.helpers.memberships import UNRESOLVED_ORGANIZATION
+
+    organization = Organization.objects.filter(pk=request.headers['X-Organization-Id']).first()
+    selection = organization.slug if organization else UNRESOLVED_ORGANIZATION
+    membership = resolve_membership_for_user(request.user, selection)
+
+``None`` means no selection and may legitimately choose a caller's sole
+membership. ``UNRESOLVED_ORGANIZATION`` means a selection was attempted and is
+refused like any other organization the caller cannot access, without requiring
+a fabricated impossible slug.
 
 Django REST Framework
 ~~~~~~~~~~~~~~~~~~~~~
@@ -926,7 +1003,11 @@ belong to another organization:
   ``instance.related_set.create(...)`` goes through the same method.
 
 ``get_or_create()`` and ``update_or_create()`` are deliberately not in that
-list: they look a row up first, and that lookup is the dangerous one above.
+list when their lookup does not name an organization: they look a row up first,
+and that lookup is the dangerous one above. Passing ``organization=`` or
+``organization_id=`` in the lookup makes the operation unambiguous, so that
+form works without an ambient organization. An organization supplied only in
+``defaults`` does not narrow the lookup and does not relax it.
 
 Views that deliberately run unbound -- the organization switcher, onboarding --
 read through ``original_manager`` or scope explicitly, which is the point: an

@@ -15,7 +15,6 @@ from vinta_orgs.helpers.organizations import (
     set_current_organization,
 )
 from vinta_orgs.middleware import OrganizationMiddleware, OrganizationRequest, get_organization
-from vinta_orgs.models import Organization
 
 
 class OrganizationMiddlewareTests(TestCase):
@@ -116,7 +115,7 @@ class OrganizationBindingTests(TestCase):
         return self.factory.get(reverse('vinta_orgs:organization_list'), **extra)
 
     def test_organization_is_bound_while_the_view_runs(self) -> None:
-        seen: list[Organization | None] = []
+        seen: list[Any] = []
 
         def get_response(request: HttpRequest) -> HttpResponse:
             seen.append(get_current_organization())

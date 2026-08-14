@@ -1,9 +1,13 @@
+from typing import Any, cast
+
 from django.contrib.auth.models import User
-from django.db import connection
+from django.db import connection, models
 from django.test import TestCase
+from django.test.utils import isolate_apps
 
 from exampleproject.articles.models import Article, ArticleStatistics, Comment
-from vinta_orgs.fields import expand_safe_relation_field_names
+from vinta_orgs.exceptions import OrganizationCannotBeUpdatedError
+from vinta_orgs.fields import OrganizationSafeForeignKey, expand_safe_relation_field_names
 from vinta_orgs.helpers.organizations import (
     clear_current_organization,
     create_organization,
@@ -118,6 +122,39 @@ class OrganizationSafeRelationWritesTests(TestCase):
 
         self.assertEqual(comment.organization_id, self.organization_2.pk)
 
+    @isolate_apps()
+    def test_nullable_relation_none_keeps_the_organization(self) -> None:
+        class TestOrganization(models.Model):  # noqa: DJ008
+            class Meta:
+                app_label = 'nullable_relation_tests'
+
+        class Target(models.Model):  # noqa: DJ008
+            organization = models.ForeignKey(TestOrganization, on_delete=models.CASCADE)
+
+            class Meta:
+                app_label = 'nullable_relation_tests'
+
+        class Source(models.Model):  # noqa: DJ008
+            organization = models.ForeignKey(TestOrganization, on_delete=models.CASCADE)
+            target = OrganizationSafeForeignKey(Target, on_delete=models.CASCADE, null=True)
+
+            class Meta:
+                app_label = 'nullable_relation_tests'
+
+        organization = TestOrganization(pk=1)
+        target = Target(pk=1, organization=organization)
+
+        constructed = Source(organization=organization, target=None)
+        self.assertEqual(cast('Any', constructed).organization_id, organization.pk)
+        self.assertIsNone(cast('Any', constructed).target_fk_id)
+
+        constructed.target = target
+        constructed.target = None
+
+        self.assertEqual(cast('Any', constructed).organization_id, organization.pk)
+        self.assertIsNone(cast('Any', constructed).target_fk_id)
+        self.assertIsNone(constructed.target)
+
     def test_constructing_with_an_id_writes_the_concrete_field(self) -> None:
         with organization_context(self.organization_1):
             # ``article_id`` is exactly what this test exists to cover:
@@ -162,7 +199,7 @@ class OrganizationSafeRelationWritesTests(TestCase):
             comment.refresh_from_db()
             self.assertEqual(comment.article, other_article)
 
-    def test_save_with_update_fields_writes_the_organization_too(self) -> None:
+    def test_save_with_update_fields_refuses_to_move_the_organization(self) -> None:
         with organization_context(self.organization_1):
             comment = Comment.objects.create(article=self.article_1, text='c')
 
@@ -173,7 +210,10 @@ class OrganizationSafeRelationWritesTests(TestCase):
             # through the scoped base manager and has to match the row as it
             # currently stands.
             comment.article = self.article_2
-            comment.save(update_fields=['article'])
+            with self.assertRaisesMessage(OrganizationCannotBeUpdatedError, '`organization` cannot be updated.'):
+                comment.save(update_fields=['article'])
+
+            comment.save(update_fields=['article'], unsafe_organization_update=True)
 
         comment = Comment.original_manager.get(pk=comment.pk)
         self.assertEqual(comment.organization_id, self.organization_2.pk)

@@ -33,7 +33,7 @@ from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
 if TYPE_CHECKING:
-    from vinta_orgs.models import Organization, OrganizationMembership
+    from vinta_orgs.models import AbstractOrganization, AbstractOrganizationMembership
 
 #: Setting names, so nothing has to spell them as bare strings.
 ORGANIZATION_MODEL_SETTING = 'ORGANIZATION_MODEL'
@@ -84,31 +84,25 @@ def _get_model(setting_name: str, model_string: str) -> Any:
         ) from exc
 
 
-def get_organization_model() -> type[Organization]:
+def get_organization_model() -> type[AbstractOrganization]:
     """Return the organization model this project is configured to use.
 
     The counterpart of ``django.contrib.auth.get_user_model()``, and it has the
     same rule: call it, do not import ``Organization`` directly, or a project
     that swapped the model gets the wrong class.
     """
-    # Annotated as the *concrete* model rather than ``AbstractOrganization``,
-    # which is a deliberate approximation: reverse accessors
-    # (``organization.memberships``, ``organization.organization_sites``) are
-    # generated only for concrete models, so the abstract base would type-check
-    # away half of what this library does with the object it returns.
-    #
-    # It is also what actually holds for whoever is running the type checker.
-    # mypy analyses one settings module at a time, and under that settings module
-    # this returns exactly one class. django-stubs makes the same approximation
-    # for ``get_user_model()``. A project that swaps the model reads its own
-    # class directly and gets its own fields.
-    organization_model: type[Organization] = _get_model(ORGANIZATION_MODEL_SETTING, organization_model_string())
+    # The abstract base is the stable contract shared by every configured
+    # model. Callers that need project-specific fields should narrow the return
+    # type to their configured concrete class.
+    organization_model: type[AbstractOrganization] = _get_model(
+        ORGANIZATION_MODEL_SETTING, organization_model_string()
+    )
     return organization_model
 
 
-def get_organization_membership_model() -> type[OrganizationMembership]:
+def get_organization_membership_model() -> type[AbstractOrganizationMembership]:
     """Return the membership model this project is configured to use."""
-    membership_model: type[OrganizationMembership] = _get_model(
+    membership_model: type[AbstractOrganizationMembership] = _get_model(
         ORGANIZATION_MEMBERSHIP_MODEL_SETTING, organization_membership_model_string()
     )
     return membership_model

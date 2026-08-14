@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Final, TypeAlias, cast
 
 from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.auth.models import Group, Permission
@@ -14,15 +14,30 @@ if TYPE_CHECKING:
     from django.db.models import QuerySet
 
     from vinta_orgs.auth_backends import AnyUser
-    from vinta_orgs.models import Organization, OrganizationMembership
+    from vinta_orgs.models import AbstractOrganization, AbstractOrganizationMembership
+
+
+class _UnresolvedOrganization:
+    """Type of the public unresolved-organization singleton."""
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return 'UNRESOLVED_ORGANIZATION'
+
+
+UNRESOLVED_ORGANIZATION: Final = _UnresolvedOrganization()
+"""A caller supplied an organization identifier that matched no organization."""
+
+OrganizationSelection: TypeAlias = 'str | _UnresolvedOrganization | None'
 
 
 def create_membership(
-    organization: Organization,
+    organization: AbstractOrganization,
     user: AbstractBaseUser,
     groups: Iterable[Group] | None = None,
     permissions: Iterable[Permission] | None = None,
-) -> OrganizationMembership:
+) -> AbstractOrganizationMembership:
     groups = groups if groups is not None else []
     permissions = permissions if permissions is not None else []
 
@@ -30,7 +45,7 @@ def create_membership(
         # ``cast`` because ``AUTH_USER_MODEL`` is the project's choice, while the
         # type checker only sees the one this repository's settings point at.
         membership = get_organization_membership_model()._default_manager.create(
-            user=cast('Any', user), organization=organization
+            user=cast('Any', user), organization=cast('Any', organization)
         )
         for group in groups:
             membership.groups.add(group)
@@ -40,13 +55,13 @@ def create_membership(
         return membership
 
 
-def get_active_memberships(user: AnyUser) -> QuerySet[OrganizationMembership]:
+def get_active_memberships(user: AnyUser) -> QuerySet[AbstractOrganizationMembership]:
     """``user``'s active memberships, oldest first, with the organization fetched.
 
     The organization switcher's query, and the one
     :func:`resolve_membership_for_user` reads.
     """
-    memberships: QuerySet[OrganizationMembership] = (
+    memberships: QuerySet[AbstractOrganizationMembership] = (
         get_organization_membership_model()
         ._default_manager.filter(user=cast('Any', user), is_active=True)
         .select_related('organization')
@@ -57,10 +72,10 @@ def get_active_memberships(user: AnyUser) -> QuerySet[OrganizationMembership]:
 
 def resolve_membership_for_user(
     user: AnyUser | None,
-    slug: str | None = None,
+    slug: OrganizationSelection = None,
     *,
     strict: bool = True,
-) -> OrganizationMembership | None:
+) -> AbstractOrganizationMembership | None:
     """Which organization is this request for? -- answered from memberships, not from trust.
 
     ``slug`` is what the caller named, if anything: the value of the
@@ -107,6 +122,11 @@ def resolve_membership_for_user(
     if user is None or user.is_anonymous or not user.is_active:
         return None
 
+    if slug is UNRESOLVED_ORGANIZATION:
+        if strict:
+            raise OrganizationAccessDeniedError()
+        return None
+
     memberships = get_active_memberships(user)
 
     if slug:
@@ -132,10 +152,10 @@ def resolve_membership_for_user(
 
 def resolve_organization_for_user(
     user: AnyUser | None,
-    slug: str | None = None,
+    slug: OrganizationSelection = None,
     *,
     strict: bool = True,
-) -> Organization | None:
+) -> AbstractOrganization | None:
     """The organization half of :func:`resolve_membership_for_user`.
 
     Same table, same refusals; use this when the membership row itself is of no

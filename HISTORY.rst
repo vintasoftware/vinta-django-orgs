@@ -3,6 +3,47 @@
 History
 -------
 
+0.4.0 (2026-08-14)
+++++++++++++++++++++
+
+Security
+~~~~~~~~
+
+* Organization ownership is immutable on existing rows. ``save()``,
+  ``update()``, ``bulk_update()``, ``update_or_create()`` and conflict-updating
+  ``bulk_create()`` -- including their asynchronous forms -- refuse a change to
+  ``organization`` with ``OrganizationCannotBeUpdatedError``. A deliberate data
+  migration can opt in per call with ``unsafe_organization_update=True``.
+
+Fixed
+~~~~~
+
+* Assigning ``None`` to a nullable ``OrganizationSafeForeignKey`` or
+  ``OrganizationSafeOneToOneField`` clears only its target key. It no longer
+  clears the row's ``organization_id`` and leaves the next save able to stamp
+  the row into whichever organization happens to be bound.
+* Reverse related managers and prefetches derive their scope from the source
+  instance instead of requiring an ambient organization. ``bulk_update()`` can
+  likewise address the primary keys of instances supplied by an unbound
+  caller. Explicit-organization ``get_or_create()`` and ``update_or_create()``
+  perform their lookup unscoped.
+* ``validate_unique()`` and ``validate_constraints()`` run Django's database
+  probes through an unscoped default manager, matching global database
+  constraints and allowing model forms to validate outside a request.
+
+Added
+~~~~~
+
+* ``unscoped_default_manager()`` is a narrow, context-local escape hatch for
+  Django internals such as ``ForeignKey.formfield()`` that hard-code
+  ``_default_manager`` and offer no queryset override.
+* ``UNRESOLVED_ORGANIZATION`` lets a resolver for a non-slug identifier preserve
+  the difference between "no identifier supplied" and "identifier supplied but
+  not found" without inventing a sentinel slug.
+* Public organization and membership APIs are typed against the abstract,
+  swappable-model contracts. Organization-safe relation declarations now type
+  as Django fields, allowing django-stubs to infer their related model.
+
 0.3.0 (2026-08-13)
 ++++++++++++++++++
 
