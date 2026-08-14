@@ -36,7 +36,7 @@ replaces its own for the duration of the view, restoring it on the way out.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
@@ -126,7 +126,7 @@ class OrganizationScopedAPIViewMixin:
 
         try:
             membership = resolve_membership_for_user(
-                cast('Any', getattr(request, 'user', None)),
+                getattr(request, 'user', None),
                 self.get_organization_slug(request),
                 strict=not self.is_organization_resolution_optional(),
             )

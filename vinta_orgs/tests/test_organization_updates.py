@@ -1,13 +1,14 @@
 """Organization ownership is immutable unless a caller opts into relocation."""
 
-from typing import Any, cast
+from typing import Any
 
 from django.contrib.auth.models import User
 from django.test import TestCase
 
 from exampleproject.articles.models import Article
 from vinta_orgs.exceptions import OrganizationCannotBeUpdatedError
-from vinta_orgs.helpers.organizations import clear_current_organization, create_organization
+from vinta_orgs.helpers.organizations import clear_current_organization
+from vinta_orgs.tests.factories import create_organization
 
 
 class OrganizationUpdateTests(TestCase):
@@ -16,7 +17,7 @@ class OrganizationUpdateTests(TestCase):
         self.other = create_organization(name='other', slug='other')
         self.user = User.objects.create_user(username='author')
         self.article = Article.objects.create(
-            organization=cast('Any', self.organization), title='title', text='text', author=self.user
+            organization=self.organization, title='title', text='text', author=self.user
         )
         clear_current_organization()
 
@@ -47,7 +48,7 @@ class OrganizationUpdateTests(TestCase):
         self.assertEqual(self.article.organization_id, self.other.pk)
 
     def test_save_refuses_relocation_and_unsafe_save_allows_it(self) -> None:
-        self.article.organization = cast('Any', self.other)
+        self.article.organization = self.other
 
         with self.assertRaises(OrganizationCannotBeUpdatedError):
             self.article.save()
@@ -56,7 +57,7 @@ class OrganizationUpdateTests(TestCase):
         self.assert_article_moved()
 
     async def test_asave_obeys_the_same_policy(self) -> None:
-        self.article.organization = cast('Any', self.other)
+        self.article.organization = self.other
 
         with self.assertRaises(OrganizationCannotBeUpdatedError):
             await self.article.asave()
@@ -66,7 +67,7 @@ class OrganizationUpdateTests(TestCase):
         self.assertEqual(self.article.organization_id, self.other.pk)
 
     def test_bulk_update_refuses_relocation_and_unsafe_bulk_update_allows_it(self) -> None:
-        self.article.organization = cast('Any', self.other)
+        self.article.organization = self.other
 
         with self.assertRaises(OrganizationCannotBeUpdatedError):
             Article.objects.bulk_update([self.article], ['organization'])
@@ -75,7 +76,7 @@ class OrganizationUpdateTests(TestCase):
         self.assert_article_moved()
 
     async def test_abulk_update_obeys_the_same_policy(self) -> None:
-        self.article.organization = cast('Any', self.other)
+        self.article.organization = self.other
 
         with self.assertRaises(OrganizationCannotBeUpdatedError):
             await Article.objects.abulk_update([self.article], ['organization'])
@@ -114,7 +115,7 @@ class OrganizationUpdateTests(TestCase):
     def test_bulk_create_conflict_updates_need_the_same_opt_in(self) -> None:
         replacement = Article(
             pk=self.article.pk,
-            organization=cast('Any', self.other),
+            organization=self.other,
             title='replacement',
             text='replacement',
             author=self.user,
@@ -140,7 +141,7 @@ class OrganizationUpdateTests(TestCase):
     async def test_abulk_create_conflict_updates_obey_the_same_policy(self) -> None:
         replacement = Article(
             pk=self.article.pk,
-            organization=cast('Any', self.other),
+            organization=self.other,
             title='replacement',
             text='replacement',
             author=self.user,

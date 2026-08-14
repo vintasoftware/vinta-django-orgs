@@ -1,18 +1,17 @@
 import threading
-from typing import cast
 
 from django.test import TestCase
 from django.utils.functional import SimpleLazyObject
 
 from vinta_orgs.helpers.organizations import (
     clear_current_organization,
-    create_organization,
     get_current_organization,
     organization_context,
     reset_current_organization,
     set_current_organization,
 )
-from vinta_orgs.models import Organization
+from vinta_orgs.models import AbstractOrganization, Organization
+from vinta_orgs.tests.factories import create_organization
 
 
 class CurrentOrganizationTests(TestCase):
@@ -46,7 +45,7 @@ class CurrentOrganizationTests(TestCase):
 
         def resolve() -> Organization:
             resolutions.append(1)
-            return cast('Organization', self.organization_1)
+            return self.organization_1
 
         lazy_organization = SimpleLazyObject(resolve)
 
@@ -118,19 +117,19 @@ class OrganizationContextTests(TestCase):
 
     def test_works_as_a_decorator(self) -> None:
         @organization_context(self.organization_1)
-        def read_organization() -> Organization | None:
-            return cast('Organization | None', get_current_organization())
+        def read_organization() -> AbstractOrganization | None:
+            return get_current_organization()
 
         self.assertEqual(read_organization(), self.organization_1)
         self.assertIsNone(get_current_organization())
 
     def test_decorator_supports_recursion(self) -> None:
         @organization_context(self.organization_1)
-        def countdown(remaining: int) -> Organization | None:
+        def countdown(remaining: int) -> AbstractOrganization | None:
             self.assertEqual(get_current_organization(), self.organization_1)
             if remaining:
                 countdown(remaining - 1)
-            return cast('Organization | None', get_current_organization())
+            return get_current_organization()
 
         self.assertEqual(countdown(3), self.organization_1)
         self.assertIsNone(get_current_organization())

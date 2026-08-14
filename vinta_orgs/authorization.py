@@ -40,12 +40,13 @@ Three shapes of the same question live here, for the three shapes of caller:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, TypeGuard
 
 from django.db.models import prefetch_related_objects
 from django.utils.functional import LazyObject
 
 from vinta_orgs.conf import get_organization_membership_model, get_organization_model
+from vinta_orgs.models import AbstractOrganization
 from vinta_orgs.querysets import filter_memberships_holding_permission
 from vinta_orgs.state import get_current_organization, organization_context
 
@@ -55,7 +56,12 @@ if TYPE_CHECKING:
     from django.contrib.auth.models import Permission
 
     from vinta_orgs.auth_backends import AnyUser
-    from vinta_orgs.models import AbstractOrganization, AbstractOrganizationMembership
+    from vinta_orgs.models import AbstractOrganizationMembership
+
+
+def _is_organization(value: object) -> TypeGuard[AbstractOrganization]:
+    """Narrow a configured organization instance, including swapped subclasses."""
+    return isinstance(value, AbstractOrganization)
 
 
 def _organization_by_pk(organization_pk: Any) -> AbstractOrganization | None:
@@ -68,7 +74,7 @@ def _organization_by_pk(organization_pk: Any) -> AbstractOrganization | None:
 
 def get_organization_permissions(
     user: AnyUser | None,
-    organization: AbstractOrganization | Any,
+    organization: object,
     *,
     include_global: bool = False,
     allow_superuser: bool = False,
@@ -94,14 +100,11 @@ def get_organization_permissions(
     if user is None or user.is_anonymous or not user.is_active or organization is None:
         return set()
 
-    # ``hasattr(..., 'pk')`` rather than an ``isinstance`` check: callers pass an
-    # ``Organization``, a ``LazyObject`` standing in for one (which proxies
-    # ``pk``), or a bare primary key -- which is not always an ``int``.
     target: AbstractOrganization | None
-    organization_pk: Any
+    organization_pk: object
 
-    if hasattr(organization, 'pk'):
-        target = cast('AbstractOrganization', organization)
+    if _is_organization(organization):
+        target = organization
         organization_pk = target.pk
     elif isinstance(organization, LazyObject):
         # A lazy stand-in that resolved to nothing. The middleware binds one of
@@ -161,7 +164,7 @@ def _resolve(
 def has_organization_permission(
     user: AnyUser | None,
     permission: str,
-    organization: AbstractOrganization | Any,
+    organization: object,
     *,
     include_global: bool = False,
     allow_superuser: bool = False,

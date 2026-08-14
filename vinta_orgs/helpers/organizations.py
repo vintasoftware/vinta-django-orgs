@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.auth.models import Group, Permission
@@ -28,19 +28,18 @@ def create_organization(
     user: AbstractBaseUser | None = None,
 ) -> AbstractOrganization:
     from vinta_orgs.conf import get_organization_model
+    from vinta_orgs.helpers.memberships import create_membership
+    from vinta_orgs.models import OrganizationSite
 
     with transaction.atomic():
         organization = get_organization_model()._default_manager.create(name=name, slug=slug)
 
         for domain in domains or []:
             site = Site.objects.create(name=name, domain=domain)
-            cast('Any', organization).organization_sites.create(site=site)
+            OrganizationSite.original_manager.create(organization_id=organization.pk, site=site)
 
         if user:
-            # ``AUTH_USER_MODEL`` is whatever the project installing this app
-            # configured; the type checker only ever sees the one this
-            # repository's settings point at.
-            rel = cast('Any', organization).memberships.create(user=cast('Any', user))
+            rel = create_membership(organization, user)
             rel.groups.add(create_default_organization_groups()[0])
 
         return organization

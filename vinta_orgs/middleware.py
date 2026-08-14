@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
 from django.http import HttpRequest
 from django.http.response import HttpResponseBase
@@ -44,22 +44,19 @@ class OrganizationRequest(HttpRequest):
     _organization_token: OrganizationToken
 
 
-_UNSET: Any = object()
-
-
 def get_organization(request: HttpRequest) -> AbstractOrganization | None:
     """Resolve the organization this request belongs to, at most once per request."""
     stashed = cast('OrganizationRequest', request)
 
     if not hasattr(request, '_cached_organization'):
-        stashed._cached_organization = _retrieve_organization(request)
+        stashed._cached_organization = _retrieve_organization(stashed)
 
     return stashed._cached_organization
 
 
-def _retrieve_organization(request: HttpRequest) -> AbstractOrganization | None:
+def _retrieve_organization(request: OrganizationRequest) -> AbstractOrganization | None:
     for organization_retriever in get_setting('ORGANIZATION_RETRIEVERS'):
-        organization = import_from_string(organization_retriever)(request)
+        organization: AbstractOrganization | None = import_from_string(organization_retriever)(request)
 
         if organization:
             if get_setting('ADD_ORGANIZATION_TO_SESSION'):
@@ -73,18 +70,17 @@ def _retrieve_organization(request: HttpRequest) -> AbstractOrganization | None:
                 except AttributeError:
                     pass
 
-            return cast('AbstractOrganization', organization)
+            return organization
 
     # No retriever recognized the request. Fall back to whatever was bound to
     # this context *before* the request started -- an organization set by a
     # test, a task or a management command. Reading the binding the middleware
     # itself just installed would recurse, which is why the previous value is
     # stashed on the request instead of read back from the context.
-    fallback = getattr(request, '_organization_before_request', _UNSET)
-    if fallback is _UNSET:
-        fallback = get_current_organization()
+    if hasattr(request, '_organization_before_request'):
+        return request._organization_before_request
 
-    return cast('AbstractOrganization | None', fallback)
+    return get_current_organization()
 
 
 class OrganizationMiddleware:

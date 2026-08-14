@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from asgiref.sync import sync_to_async
 from django.db import models, router, transaction
@@ -41,6 +41,12 @@ def get_default_organization() -> AbstractOrganization | None:
     # ``ORGANIZATION_MODEL`` names, and a project is free to call its manager
     # something else.
     return get_organization_model()._default_manager.filter(slug=slug).first()
+
+
+def _model_pk_is_set(instance: models.Model) -> bool:
+    """Django's private ``_is_pk_set()``, expressed from the public ``pk`` value."""
+    pk = instance.pk
+    return pk is not None and (not isinstance(pk, tuple) or all(value is not None for value in pk))
 
 
 class SingleOrganizationModelMixin(models.Model):
@@ -149,7 +155,7 @@ class SingleOrganizationModelMixin(models.Model):
 
         if (
             writes_organization
-            and cast('Any', self)._is_pk_set()
+            and _model_pk_is_set(self)
             and not force_insert
             and not unsafe_organization_update
             and not organization_update_is_allowed()
@@ -232,7 +238,10 @@ def add_organization_index(sender: type[models.Model], **kwargs: Any) -> None:
     # ``Options.indexes`` is typed as "whatever ``Meta.indexes`` was", but
     # ``Meta`` here is the abstract base's, which declares none, so what a
     # subclass gets is the list ``Options`` built for it.
-    indexes = cast('list[models.Index]', sender._meta.indexes)
+    indexes = sender._meta.indexes
+    if not isinstance(indexes, list):
+        indexes = list(indexes)
+        sender._meta.indexes = indexes
     indexes.append(index)
 
     # ``ModelState.from_model`` only reads ``_meta.indexes`` for models whose

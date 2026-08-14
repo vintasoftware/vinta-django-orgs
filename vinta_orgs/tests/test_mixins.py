@@ -1,5 +1,3 @@
-from typing import Any, cast
-
 from django.contrib.auth.models import User
 from django.db import models
 from django.test import TestCase, override_settings
@@ -9,12 +7,12 @@ from exampleproject.articles.models import Article, Comment, Tag
 from vinta_orgs.exceptions import OrganizationNotFoundError
 from vinta_orgs.helpers.organizations import (
     clear_current_organization,
-    create_organization,
     set_current_organization,
 )
 from vinta_orgs.managers import OrganizationScopedManagerMixin
 from vinta_orgs.mixins import get_default_organization
 from vinta_orgs.models import OrganizationMembership, OrganizationSite
+from vinta_orgs.tests.factories import create_organization
 
 
 class SingleOrganizationModelMixinQueryCountTests(TestCase):
@@ -45,9 +43,7 @@ class SingleOrganizationModelMixinQueryCountTests(TestCase):
             article.save()
 
     def test_save_with_an_explicit_organization_makes_a_single_query(self) -> None:
-        article = Article(
-            organization=cast('Any', self.organization), title='Test Article', text='Test', author=self.user
-        )
+        article = Article(organization=self.organization, title='Test Article', text='Test', author=self.user)
 
         with self.assertNumQueries(1):
             article.save()
@@ -55,7 +51,7 @@ class SingleOrganizationModelMixinQueryCountTests(TestCase):
     def test_bulk_create_makes_a_single_query(self) -> None:
         articles = [
             Article(
-                organization=cast('Any', self.organization),
+                organization=self.organization,
                 title='Article %d' % i,
                 text='Test',
                 author=self.user,
@@ -110,7 +106,7 @@ class SingleOrganizationModelMixinSaveTests(TestCase):
         other = create_organization(name='other', slug='other')
         set_current_organization(self.organization.slug)
 
-        article = Article(organization=cast('Any', other), title='Test Article', text='Test', author=self.user)
+        article = Article(organization=other, title='Test Article', text='Test', author=self.user)
         article.save()
 
         self.assertEqual(article.organization, other)
@@ -209,9 +205,7 @@ class BaseManagerTests(TestCase):
 
     @override_settings(SHARED_SCHEMA_ORGANIZATIONS={'STRICT_ORGANIZATION_FILTER': True})
     def test_strict_filter_leaves_an_explicitly_organized_save_alone(self) -> None:
-        article = Article(
-            organization=cast('Any', self.organization), title='Test Article', text='Test', author=self.user
-        )
+        article = Article(organization=self.organization, title='Test Article', text='Test', author=self.user)
 
         article.save()
 
@@ -248,7 +242,8 @@ class OrganizationIndexTests(TestCase):
                 # Asserted through ``deconstruct()`` because that is what the
                 # migration writes: ``ForeignKey`` emits ``db_index=False``
                 # there precisely when it builds no index of its own.
-                field = cast('models.Field[Any, Any]', model._meta.get_field('organization'))
+                field = model._meta.get_field('organization')
+                assert isinstance(field, models.Field)
                 *_, kwargs = field.deconstruct()
 
                 self.assertFalse(kwargs.get('db_index', True))

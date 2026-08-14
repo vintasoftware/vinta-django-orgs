@@ -8,8 +8,6 @@ That is the point -- they describe the contract rather than one configuration,
 and the swapped run is what proves the contract is real.
 """
 
-from typing import Any, cast
-
 from django.conf import settings
 from django.contrib import admin
 from django.core.exceptions import ImproperlyConfigured
@@ -118,8 +116,8 @@ class RelationTargetTests(TestCase):
         with organization_context(organization):
             # Named on the relations in ``models.py``; a project that swaps the
             # organization inherits them, which is what the library reads.
-            self.assertEqual(cast('Any', organization).memberships.count(), 0)
-            self.assertEqual(cast('Any', organization).organization_sites.count(), 0)
+            self.assertEqual(organization.memberships.count(), 0)
+            self.assertEqual(organization.organization_sites.count(), 0)
 
 
 class OwnerPermissionsTests(TestCase):

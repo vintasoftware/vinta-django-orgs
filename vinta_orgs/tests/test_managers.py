@@ -1,4 +1,4 @@
-from typing import Any, cast
+from typing import Any
 
 import django.utils.version
 from django.contrib.auth.models import User
@@ -10,9 +10,9 @@ from vinta_orgs.conf import get_organization_membership_model
 from vinta_orgs.exceptions import OrganizationNotFoundError
 from vinta_orgs.helpers.organizations import (
     clear_current_organization,
-    create_organization,
     set_current_organization,
 )
+from vinta_orgs.tests.factories import create_organization
 
 
 class SingleOrganizationModelManagerTests(TestCase):
@@ -50,19 +50,19 @@ class SingleOrganizationModelManagerTests(TestCase):
         self.assertEqual(article.organization, self.organization_1)
 
     def test_list(self) -> None:
-        self.assertEqual(self.articles_manager.count(), cast('Any', self.organization_1).article_set.count())
+        self.assertEqual(self.articles_manager.count(), self.organization_1.article_set.count())
         set_current_organization(self.organization_2.slug)
-        self.assertEqual(self.articles_manager.count(), cast('Any', self.organization_2).article_set.count())
+        self.assertEqual(self.articles_manager.count(), self.organization_2.article_set.count())
 
     def test_list_passing_organization_to_get_queryset(self) -> None:
         self.assertEqual(
             self.articles_manager.get_queryset(organization=self.organization_1).all().count(),
-            cast('Any', self.organization_1).article_set.all().count(),
+            self.organization_1.article_set.all().count(),
         )
         self.assertEqual(
             self.articles_manager.get_queryset(organization=self.organization_2).all().count(),
             self.articles_manager.get_queryset(organization=self.organization_2).all().count(),
-            cast('Any', self.organization_2).article_set.all().count(),
+            self.organization_2.article_set.all().count(),
         )
 
     def test_list_original_queryset(self) -> None:
@@ -224,7 +224,7 @@ class CreateTests(TestCase):
             Article.objects.create(title='t', text='x', author=self.user)
 
     def test_a_related_manager_create_needs_nothing_selected(self) -> None:
-        organization_site = cast('Any', self.organization).organization_sites.create(
+        organization_site = self.organization.organization_sites.create(
             site=baker.make('sites.Site', domain='create.example')
         )
 
@@ -232,8 +232,8 @@ class CreateTests(TestCase):
 
     def test_bulk_create_needs_nothing_selected(self) -> None:
         articles = [
-            Article(organization=cast('Any', self.organization), title='a', text='x', author=self.user),
-            Article(organization=cast('Any', self.organization), title='b', text='x', author=self.user),
+            Article(organization=self.organization, title='a', text='x', author=self.user),
+            Article(organization=self.organization, title='b', text='x', author=self.user),
         ]
 
         Article.objects.bulk_create(articles)

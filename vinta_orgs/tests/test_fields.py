@@ -1,5 +1,3 @@
-from typing import Any, cast
-
 from django.contrib.auth.models import User
 from django.db import connection, models
 from django.test import TestCase
@@ -10,9 +8,9 @@ from vinta_orgs.exceptions import OrganizationCannotBeUpdatedError
 from vinta_orgs.fields import OrganizationSafeForeignKey, expand_safe_relation_field_names
 from vinta_orgs.helpers.organizations import (
     clear_current_organization,
-    create_organization,
     organization_context,
 )
+from vinta_orgs.tests.factories import create_organization
 
 
 class OrganizationSafeForeignKeyTests(TestCase):
@@ -143,16 +141,20 @@ class OrganizationSafeRelationWritesTests(TestCase):
 
         organization = TestOrganization(pk=1)
         target = Target(pk=1, organization=organization)
+        organization_field = Source._meta.get_field('organization')
+        target_field = Source._meta.get_field('target_fk')
+        assert isinstance(organization_field, models.Field)
+        assert isinstance(target_field, models.Field)
 
         constructed = Source(organization=organization, target=None)
-        self.assertEqual(cast('Any', constructed).organization_id, organization.pk)
-        self.assertIsNone(cast('Any', constructed).target_fk_id)
+        self.assertEqual(organization_field.value_from_object(constructed), organization.pk)
+        self.assertIsNone(target_field.value_from_object(constructed))
 
         constructed.target = target
         constructed.target = None
 
-        self.assertEqual(cast('Any', constructed).organization_id, organization.pk)
-        self.assertIsNone(cast('Any', constructed).target_fk_id)
+        self.assertEqual(organization_field.value_from_object(constructed), organization.pk)
+        self.assertIsNone(target_field.value_from_object(constructed))
         self.assertIsNone(constructed.target)
 
     def test_constructing_with_an_id_writes_the_concrete_field(self) -> None:

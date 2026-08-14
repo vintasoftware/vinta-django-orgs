@@ -22,7 +22,7 @@ longer matches the table.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final, Literal, TypeAlias
 
 from django.core.cache import caches
 from django.db.models.signals import post_delete, post_save
@@ -38,7 +38,8 @@ if TYPE_CHECKING:
 
 #: Cached in place of an organization when a site maps to none, so an unmapped
 #: domain does not re-query on every request either.
-NO_ORGANIZATION = '__none__'
+NoOrganization: TypeAlias = Literal['__none__']
+NO_ORGANIZATION: Final[NoOrganization] = '__none__'
 
 KEY_PREFIX = 'shared-schema-organizations:site'
 
@@ -77,7 +78,7 @@ def _load(values: dict[str, Any]) -> AbstractOrganization | None:
     return organization
 
 
-def get_cached_organization_for_site(site_id: Any) -> AbstractOrganization | None | str:
+def get_cached_organization_for_site(site_id: Any) -> AbstractOrganization | None | NoOrganization:
     """Return the cached organization, ``NO_ORGANIZATION``, or ``None`` for a miss."""
     if not is_enabled():
         return None

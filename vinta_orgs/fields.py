@@ -42,7 +42,7 @@ each side.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from django.core.exceptions import FieldDoesNotExist
 from django.db import models
@@ -76,7 +76,10 @@ class OrganizationSafeForwardManyToOneDescriptor(ForwardManyToOneDescriptor):
         if related is not None:
             remote_field.set_cached_value(related, None)
 
-        organization_field_name = cast('Any', self.field).organization_field_name
+        # Safe relations always put the row's organization second in
+        # ``from_fields``; derive it from the field's declared shape instead of
+        # attaching an untyped ad-hoc attribute to the field instance.
+        organization_field_name = self.field.from_fields[-1]
 
         for local_field, _remote_field in self.field.related_fields:
             if local_field.name != organization_field_name:
@@ -182,7 +185,6 @@ class OrganizationSafeRelation(_OrganizationSafeRelationBase):
             null=self.null,
             **self.foreign_object_kwargs,
         )
-        cast('Any', safe_field).organization_field_name = self.organization_field
         # Kept on the field instance rather than expressed as a new
         # ``ForeignObject`` subclass, so adopting the safer descriptor does not
         # change the field's deconstruction path and manufacture migrations.
@@ -265,9 +267,9 @@ def expand_safe_relation_field_names(model: type[models.Model], field_names: Seq
 
     for field_name in field_names:
         if field_name in safe_relations:
-            # ``get_organization_safe_relations`` only reports names that
-            # resolve to a ``ForeignObject``.
-            safe_field = cast(ForeignObject, model._meta.get_field(field_name))
+            safe_field = model._meta.get_field(field_name)
+            if not isinstance(safe_field, ForeignObject):
+                raise TypeError('%s.%s must be a ForeignObject' % (model._meta.label, field_name))
             names = [f.name for f in safe_field.local_related_fields]
         else:
             names = [field_name]

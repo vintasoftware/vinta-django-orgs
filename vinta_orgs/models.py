@@ -12,7 +12,9 @@ touches it. See :mod:`vinta_orgs.conf`.
 what the retriever and the cache are wired to.
 """
 
-from typing import Any
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 from django.conf import settings as django_settings
 from django.contrib.sites.models import Site
@@ -35,6 +37,13 @@ class AbstractOrganization(TimeStampedModel):
 
     name = models.CharField(max_length=255)
     slug = models.CharField(max_length=255, unique=True)
+
+    if TYPE_CHECKING:
+        # These reverse accessors target whichever organization model is
+        # configured. They are part of the abstract contract even though Django
+        # installs their descriptors only on the concrete model.
+        organization_sites: models.Manager[OrganizationSite]
+        memberships: models.Manager[AbstractOrganizationMembership]
 
     class Meta:
         abstract = True

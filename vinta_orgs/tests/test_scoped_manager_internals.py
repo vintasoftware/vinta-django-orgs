@@ -1,19 +1,21 @@
 """Django call paths that need a scoped manager's explicit escape hatches."""
 
-from typing import Any, cast
+from typing import Any
 from unittest import mock
 
 from django.contrib.auth.models import User
 from django.contrib.sites.models import Site
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.forms import ModelChoiceField
 from django.test import TestCase
 
 from exampleproject.articles.models import Article, Comment, Tag
 from vinta_orgs.exceptions import OrganizationNotFoundError
-from vinta_orgs.helpers.organizations import clear_current_organization, create_organization, set_current_organization
+from vinta_orgs.helpers.organizations import clear_current_organization, set_current_organization
 from vinta_orgs.managers import unscoped_default_manager
 from vinta_orgs.models import OrganizationSite
+from vinta_orgs.tests.factories import create_organization
 
 
 class RelatedManagerIntegrationTests(TestCase):
@@ -22,7 +24,7 @@ class RelatedManagerIntegrationTests(TestCase):
         self.other = create_organization(name='other', slug='other')
         self.user = User.objects.create_user(username='author')
         self.article = Article.objects.create(
-            organization=cast('Any', self.organization), title='title', text='text', author=self.user
+            organization=self.organization, title='title', text='text', author=self.user
         )
         self.comment = Comment.objects.create(article=self.article, text='comment')
         clear_current_organization()
@@ -48,9 +50,7 @@ class ScopedManagerEscapeTests(TestCase):
         self.other = create_organization(name='other', slug='other')
         self.user = User.objects.create_user(username='author')
         self.articles = [
-            Article.objects.create(
-                organization=cast('Any', organization), title=organization.slug, text='text', author=self.user
-            )
+            Article.objects.create(organization=organization, title=organization.slug, text='text', author=self.user)
             for organization in (self.organization, self.other)
         ]
         clear_current_organization()
@@ -83,7 +83,10 @@ class ScopedManagerEscapeTests(TestCase):
             formfield = field.formfield()
 
         assert formfield is not None
-        self.assertEqual(cast('Any', formfield).queryset.count(), 2)
+        self.assertIsInstance(formfield, ModelChoiceField)
+        assert isinstance(formfield, ModelChoiceField)
+        assert formfield.queryset is not None
+        self.assertEqual(formfield.queryset.count(), 2)
 
     def test_bulk_update_uses_instance_primary_keys_without_a_bound_organization(self) -> None:
         for article in self.articles:
@@ -95,7 +98,7 @@ class ScopedManagerEscapeTests(TestCase):
 
     def test_get_or_create_with_an_explicit_organization_is_unbound_safe(self) -> None:
         article, created = Article.objects.get_or_create(
-            organization=cast('Any', self.organization),
+            organization=self.organization,
             title='new',
             defaults={'text': 'text', 'author': self.user},
         )
@@ -109,17 +112,17 @@ class ValidationIntegrationTests(TestCase):
         self.organization = create_organization(name='organization', slug='organization')
         self.other = create_organization(name='other', slug='other')
         self.site = Site.objects.create(name='site', domain='site.example')
-        OrganizationSite.objects.create(organization=cast('Any', self.organization), site=self.site)
+        OrganizationSite.objects.create(organization=self.organization, site=self.site)
         clear_current_organization()
 
     def test_validate_unique_uses_the_unscoped_default_manager(self) -> None:
-        duplicate = OrganizationSite(organization=cast('Any', self.other), site=self.site)
+        duplicate = OrganizationSite(organization=self.other, site=self.site)
 
         with self.assertRaises(ValidationError):
             duplicate.validate_unique()
 
     def test_validate_constraints_temporarily_unscopes_single_organization_models(self) -> None:
-        article = Article(organization=cast('Any', self.organization))
+        article = Article(organization=self.organization)
 
         def validate_constraints(instance: models.Model, exclude: Any = None) -> None:
             self.assertEqual(Article.objects.count(), 0)

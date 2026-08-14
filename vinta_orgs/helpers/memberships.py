@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, Final, TypeAlias, cast
+from typing import TYPE_CHECKING, Final, TypeAlias
 
 from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.auth.models import Group, Permission
-from django.db import transaction
+from django.db import models, transaction
 
 from vinta_orgs.conf import get_organization_membership_model
 from vinta_orgs.exceptions import AmbiguousOrganizationError, OrganizationAccessDeniedError
@@ -32,6 +32,14 @@ UNRESOLVED_ORGANIZATION: Final = _UnresolvedOrganization()
 OrganizationSelection: TypeAlias = 'str | _UnresolvedOrganization | None'
 
 
+def _cache_relation(instance: models.Model, field_name: str, value: models.Model) -> None:
+    """Cache a relation value after an ID-based write, preserving object identity."""
+    field = instance._meta.get_field(field_name)
+    if not isinstance(field, models.ForeignKey):
+        raise TypeError('%s.%s must be a ForeignKey' % (instance._meta.label, field_name))
+    field.set_cached_value(instance, value)
+
+
 def create_membership(
     organization: AbstractOrganization,
     user: AbstractBaseUser,
@@ -42,11 +50,16 @@ def create_membership(
     permissions = permissions if permissions is not None else []
 
     with transaction.atomic():
-        # ``cast`` because ``AUTH_USER_MODEL`` is the project's choice, while the
-        # type checker only sees the one this repository's settings point at.
         membership = get_organization_membership_model()._default_manager.create(
-            user=cast('Any', user), organization=cast('Any', organization)
+            user_id=user.pk,
+            organization_id=organization.pk,
         )
+        # ID-based kwargs keep this helper compatible with arbitrary swapped
+        # model classes. Restore the object caches an instance-valued create
+        # would have populated, so callers observe the exact user and
+        # organization instances they supplied.
+        _cache_relation(membership, 'user', user)
+        _cache_relation(membership, 'organization', organization)
         for group in groups:
             membership.groups.add(group)
         for perm in permissions:
@@ -63,7 +76,7 @@ def get_active_memberships(user: AnyUser) -> QuerySet[AbstractOrganizationMember
     """
     memberships: QuerySet[AbstractOrganizationMembership] = (
         get_organization_membership_model()
-        ._default_manager.filter(user=cast('Any', user), is_active=True)
+        ._default_manager.filter(user_id=user.pk, is_active=True)
         .select_related('organization')
         .order_by('created')
     )

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 from django.contrib.sites.models import Site
 from django.contrib.sites.shortcuts import get_current_site
@@ -41,7 +41,7 @@ def retrieve_by_domain(request: HttpRequest) -> AbstractOrganization | None:
         return None
 
     if cached is not None:
-        return cast('AbstractOrganization', cached)
+        return cached
 
     # ``original_manager`` because the scoped manager would need the very
     # organization this function exists to find. ``select_related`` fetches the
@@ -95,7 +95,7 @@ def _verify_membership(request: HttpRequest, organization: AbstractOrganization)
     # go on to read it.
     memberships = get_organization_membership_model()._default_manager
 
-    if not memberships.filter(user=user, organization=cast('Any', organization), is_active=True).exists():
+    if not memberships.filter(user_id=user.pk, organization_id=organization.pk, is_active=True).exists():
         raise OrganizationAccessDeniedError()
 
 
