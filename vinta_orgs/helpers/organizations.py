@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar, overload
 
 from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.auth.models import Group, Permission
@@ -20,19 +20,51 @@ from vinta_orgs.state import (  # noqa: F401
 if TYPE_CHECKING:
     from vinta_orgs.models import AbstractOrganization
 
+_OrganizationT = TypeVar('_OrganizationT', bound='AbstractOrganization')
+
+
+@overload
+def create_organization(
+    name: str,
+    slug: str,
+    domains: Iterable[str] | None = None,
+    user: AbstractBaseUser | None = None,
+    *,
+    organization_model: type[_OrganizationT],
+) -> _OrganizationT: ...
+
+
+@overload
+def create_organization(
+    name: str,
+    slug: str,
+    domains: Iterable[str] | None = None,
+    user: AbstractBaseUser | None = None,
+    *,
+    organization_model: None = None,
+) -> AbstractOrganization: ...
+
 
 def create_organization(
     name: str,
     slug: str,
     domains: Iterable[str] | None = None,
     user: AbstractBaseUser | None = None,
+    *,
+    organization_model: type[AbstractOrganization] | None = None,
 ) -> AbstractOrganization:
+    """Create an organization, preserving an optional concrete model witness."""
     from vinta_orgs.conf import get_organization_model
     from vinta_orgs.helpers.memberships import create_membership
     from vinta_orgs.models import OrganizationSite
 
     with transaction.atomic():
-        organization = get_organization_model()._default_manager.create(name=name, slug=slug)
+        if organization_model is None:
+            configured_model = get_organization_model()
+        else:
+            configured_model = get_organization_model(organization_model)
+
+        organization = configured_model._default_manager.create(name=name, slug=slug)
 
         for domain in domains or []:
             site = Site.objects.create(name=name, domain=domain)
@@ -46,8 +78,8 @@ def create_organization(
 
 
 def update_organization(
-    organization: AbstractOrganization, name: str | None = None, slug: str | None = None
-) -> AbstractOrganization:
+    organization: _OrganizationT, name: str | None = None, slug: str | None = None
+) -> _OrganizationT:
     with transaction.atomic():
         organization.name = name if name else organization.name
         organization.slug = slug if slug else organization.slug

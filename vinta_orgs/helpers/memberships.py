@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Final, TypeAlias
+from typing import TYPE_CHECKING, Final, TypeAlias, TypeVar, overload
 
 from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.auth.models import Group, Permission
 from django.db import models, transaction
 
-from vinta_orgs.conf import get_organization_membership_model
+from vinta_orgs.conf import get_organization_membership_model, get_organization_model
 from vinta_orgs.exceptions import AmbiguousOrganizationError, OrganizationAccessDeniedError
 
 if TYPE_CHECKING:
@@ -15,6 +15,9 @@ if TYPE_CHECKING:
 
     from vinta_orgs.auth_backends import AnyUser
     from vinta_orgs.models import AbstractOrganization, AbstractOrganizationMembership
+
+_OrganizationT = TypeVar('_OrganizationT', bound='AbstractOrganization')
+_OrganizationMembershipT = TypeVar('_OrganizationMembershipT', bound='AbstractOrganizationMembership')
 
 
 class _UnresolvedOrganization:
@@ -40,17 +43,47 @@ def _cache_relation(instance: models.Model, field_name: str, value: models.Model
     field.set_cached_value(instance, value)
 
 
+@overload
 def create_membership(
     organization: AbstractOrganization,
     user: AbstractBaseUser,
     groups: Iterable[Group] | None = None,
     permissions: Iterable[Permission] | None = None,
+    *,
+    membership_model: type[_OrganizationMembershipT],
+) -> _OrganizationMembershipT: ...
+
+
+@overload
+def create_membership(
+    organization: AbstractOrganization,
+    user: AbstractBaseUser,
+    groups: Iterable[Group] | None = None,
+    permissions: Iterable[Permission] | None = None,
+    *,
+    membership_model: None = None,
+) -> AbstractOrganizationMembership: ...
+
+
+def create_membership(
+    organization: AbstractOrganization,
+    user: AbstractBaseUser,
+    groups: Iterable[Group] | None = None,
+    permissions: Iterable[Permission] | None = None,
+    *,
+    membership_model: type[AbstractOrganizationMembership] | None = None,
 ) -> AbstractOrganizationMembership:
+    """Create a membership, preserving an optional concrete model witness."""
     groups = groups if groups is not None else []
     permissions = permissions if permissions is not None else []
 
     with transaction.atomic():
-        membership = get_organization_membership_model()._default_manager.create(
+        if membership_model is None:
+            configured_model = get_organization_membership_model()
+        else:
+            configured_model = get_organization_membership_model(membership_model)
+
+        membership = configured_model._default_manager.create(
             user_id=user.pk,
             organization_id=organization.pk,
         )
@@ -68,19 +101,59 @@ def create_membership(
         return membership
 
 
-def get_active_memberships(user: AnyUser) -> QuerySet[AbstractOrganizationMembership]:
+@overload
+def get_active_memberships(
+    user: AnyUser, *, membership_model: type[_OrganizationMembershipT]
+) -> QuerySet[_OrganizationMembershipT]: ...
+
+
+@overload
+def get_active_memberships(
+    user: AnyUser, *, membership_model: None = None
+) -> QuerySet[AbstractOrganizationMembership]: ...
+
+
+def get_active_memberships(
+    user: AnyUser, *, membership_model: type[AbstractOrganizationMembership] | None = None
+) -> QuerySet[AbstractOrganizationMembership]:
     """``user``'s active memberships, oldest first, with the organization fetched.
 
     The organization switcher's query, and the one
     :func:`resolve_membership_for_user` reads.
+    Pass ``membership_model`` to check the configured class and retain its
+    concrete queryset type.
     """
+    if membership_model is None:
+        configured_model = get_organization_membership_model()
+    else:
+        configured_model = get_organization_membership_model(membership_model)
+
     memberships: QuerySet[AbstractOrganizationMembership] = (
-        get_organization_membership_model()
-        ._default_manager.filter(user_id=user.pk, is_active=True)
+        configured_model._default_manager.filter(user_id=user.pk, is_active=True)
         .select_related('organization')
         .order_by('created')
     )
     return memberships
+
+
+@overload
+def resolve_membership_for_user(
+    user: AnyUser | None,
+    slug: OrganizationSelection = None,
+    *,
+    strict: bool = True,
+    membership_model: type[_OrganizationMembershipT],
+) -> _OrganizationMembershipT | None: ...
+
+
+@overload
+def resolve_membership_for_user(
+    user: AnyUser | None,
+    slug: OrganizationSelection = None,
+    *,
+    strict: bool = True,
+    membership_model: None = None,
+) -> AbstractOrganizationMembership | None: ...
 
 
 def resolve_membership_for_user(
@@ -88,6 +161,7 @@ def resolve_membership_for_user(
     slug: OrganizationSelection = None,
     *,
     strict: bool = True,
+    membership_model: type[AbstractOrganizationMembership] | None = None,
 ) -> AbstractOrganizationMembership | None:
     """Which organization is this request for? -- answered from memberships, not from trust.
 
@@ -131,6 +205,9 @@ def resolve_membership_for_user(
     not a default to reach for. Everything downstream then sees no organization
     bound, which under ``STRICT_ORGANIZATION_FILTER`` is a loud failure rather
     than a quiet cross-tenant read.
+
+    ``membership_model`` is an optional checked type witness for callers that
+    need fields declared by their swapped membership model.
     """
     if user is None or user.is_anonymous or not user.is_active:
         return None
@@ -140,7 +217,10 @@ def resolve_membership_for_user(
             raise OrganizationAccessDeniedError()
         return None
 
-    memberships = get_active_memberships(user)
+    if membership_model is None:
+        memberships = get_active_memberships(user)
+    else:
+        memberships = get_active_memberships(user, membership_model=membership_model)
 
     if slug:
         membership = memberships.filter(organization__slug=slug).first()
@@ -163,16 +243,53 @@ def resolve_membership_for_user(
     return None
 
 
+@overload
 def resolve_organization_for_user(
     user: AnyUser | None,
     slug: OrganizationSelection = None,
     *,
     strict: bool = True,
+    organization_model: type[_OrganizationT],
+) -> _OrganizationT | None: ...
+
+
+@overload
+def resolve_organization_for_user(
+    user: AnyUser | None,
+    slug: OrganizationSelection = None,
+    *,
+    strict: bool = True,
+    organization_model: None = None,
+) -> AbstractOrganization | None: ...
+
+
+def resolve_organization_for_user(
+    user: AnyUser | None,
+    slug: OrganizationSelection = None,
+    *,
+    strict: bool = True,
+    organization_model: type[AbstractOrganization] | None = None,
 ) -> AbstractOrganization | None:
     """The organization half of :func:`resolve_membership_for_user`.
 
     Same table, same refusals; use this when the membership row itself is of no
-    interest.
+    interest. ``organization_model`` is an optional checked type witness for a
+    concrete return type.
     """
+    if organization_model is not None:
+        get_organization_model(organization_model)
+
     membership = resolve_membership_for_user(user, slug, strict=strict)
-    return membership.organization if membership is not None else None
+
+    if membership is None:
+        return None
+
+    organization = membership.organization
+
+    if organization_model is not None and not isinstance(organization, organization_model):
+        raise TypeError(
+            "The resolved organization is '%s', not an instance of the expected model '%s'"
+            % (organization._meta.label, organization_model._meta.label)
+        )
+
+    return organization

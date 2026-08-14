@@ -1,5 +1,6 @@
 import threading
 
+from django.core.exceptions import ImproperlyConfigured
 from django.test import TestCase
 from django.utils.functional import SimpleLazyObject
 
@@ -10,7 +11,7 @@ from vinta_orgs.helpers.organizations import (
     reset_current_organization,
     set_current_organization,
 )
-from vinta_orgs.models import AbstractOrganization, Organization
+from vinta_orgs.models import AbstractOrganization, Organization, OrganizationSite
 from vinta_orgs.tests.factories import create_organization
 
 
@@ -30,6 +31,12 @@ class CurrentOrganizationTests(TestCase):
     def test_set_by_instance(self) -> None:
         set_current_organization(self.organization_1)
         self.assertEqual(get_current_organization(), self.organization_1)
+
+    def test_an_incompatible_expected_type_is_reported(self) -> None:
+        set_current_organization(self.organization_1)
+
+        with self.assertRaises(ImproperlyConfigured):
+            get_current_organization(OrganizationSite)  # type: ignore[type-var]
 
     def test_set_by_slug_does_not_query_until_read(self) -> None:
         with self.assertNumQueries(0):

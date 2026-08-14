@@ -145,6 +145,32 @@ Reach for the configured model through the helpers, never by importing
     Organization = get_organization_model()
     OrganizationMembership = get_organization_membership_model()
 
+The zero-argument form is typed against the abstract contracts because a type
+checker cannot read a runtime Django setting. When application code needs its
+extra fields, pass the concrete model as a checked type witness. The returned
+class and helper results then retain that concrete type:
+
+.. code:: python
+
+    from myapp.models import Organization as MyOrganization
+    from myapp.models import OrganizationMembership as MyOrganizationMembership
+    from vinta_orgs.conf import get_organization_model, get_organization_membership_model
+    from vinta_orgs.helpers.organizations import create_organization
+
+    Organization = get_organization_model(MyOrganization)
+    OrganizationMembership = get_organization_membership_model(MyOrganizationMembership)
+
+    organization = create_organization(
+        name='Acme',
+        slug='acme',
+        organization_model=MyOrganization,
+    )
+    organization.can_invite_organizations = True
+
+The same ``membership_model=`` witness is available on ``create_membership``,
+``get_active_memberships`` and ``resolve_membership_for_user``;
+``resolve_organization_for_user`` accepts ``organization_model=``.
+
 For a foreign key of your own, point at the setting so it follows the swap:
 
 .. code:: python
@@ -791,7 +817,10 @@ You can access the current organization from the request.
 
 .. code:: python
 
-    def my_view(request):
+    from myapp.models import Organization
+    from vinta_orgs.middleware import OrganizationRequest
+
+    def my_view(request: OrganizationRequest[Organization]):
         current_organization = request.organization
         # ...
 
@@ -801,11 +830,16 @@ From ``get_current_organization`` helper
 
 .. code:: python
 
+    from myapp.models import Organization
     from vinta_orgs.helpers import get_current_organization
 
     def my_view(request):
-        current_organization = get_current_organization()
+        current_organization = get_current_organization(Organization)
         # ...
+
+Passing the model is optional. Without it the return type is the abstract
+organization contract; with it, the package checks the runtime value and the
+return type is ``Organization | None``.
 
 
 The models that inherit from ``SingleOrganizationModelMixin`` or

@@ -15,6 +15,8 @@ from django.test import TestCase, override_settings
 
 from vinta_orgs.conf import get_organization_membership_model, get_organization_model
 from vinta_orgs.exceptions import OrganizationNotFoundError
+from vinta_orgs.helpers.memberships import create_membership, get_active_memberships, resolve_membership_for_user
+from vinta_orgs.helpers.organizations import create_organization
 from vinta_orgs.managers import OrganizationScopedManagerMixin
 from vinta_orgs.middleware import OrganizationMiddleware
 from vinta_orgs.models import OrganizationSite
@@ -40,6 +42,11 @@ class OrganizationTests(TestCase):
         OrganizationMiddleware.set_organization(organization)
         self.assertEqual(Organization.objects.all().count(), 1)
         self.assertEqual(organization.organization_sites.all().count(), 0)
+
+    def test_create_helper_accepts_the_configured_model_as_a_type_witness(self) -> None:
+        organization = create_organization('test', 'test', organization_model=Organization)
+
+        self.assertIs(type(organization), Organization)
 
 
 class OrganizationSiteTests(TestCase):
@@ -68,6 +75,22 @@ class OrganizationMembershipTests(TestCase):
     def test_create(self) -> None:
         OrganizationMembership.objects.create(organization=self.organization, user=self.user)
         self.assertEqual(OrganizationMembership.objects.all().count(), 1)
+
+    def test_membership_helpers_accept_the_configured_model_as_a_type_witness(self) -> None:
+        membership = create_membership(
+            self.organization,
+            self.user,
+            membership_model=OrganizationMembership,
+        )
+
+        self.assertIs(type(membership), OrganizationMembership)
+        self.assertEqual(
+            list(get_active_memberships(self.user, membership_model=OrganizationMembership)), [membership]
+        )
+        self.assertEqual(
+            resolve_membership_for_user(self.user, membership_model=OrganizationMembership),
+            membership,
+        )
 
 
 class OrganizationMembershipManagerTests(TestCase):

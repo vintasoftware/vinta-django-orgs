@@ -40,9 +40,13 @@ Added
 * ``UNRESOLVED_ORGANIZATION`` lets a resolver for a non-slug identifier preserve
   the difference between "no identifier supplied" and "identifier supplied but
   not found" without inventing a sentinel slug.
-* Public organization and membership APIs are typed against the abstract,
-  swappable-model contracts. Organization-safe relation declarations now type
-  as Django fields, allowing django-stubs to infer their related model.
+* Public organization and membership APIs use the abstract, swappable-model
+  contracts as their fallback without erasing concrete types. Helpers preserve
+  concrete instance inputs, and settings-driven helpers accept a checked model
+  class when callers want a concrete return type. ``OrganizationRequest`` and
+  ``organization_context`` are generic for the same reason. Organization-safe
+  relation declarations now type as Django fields, allowing django-stubs to
+  infer their related model.
 
 0.3.0 (2026-08-13)
 ++++++++++++++++++

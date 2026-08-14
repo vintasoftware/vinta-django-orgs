@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Generic, TypeVar, cast, overload
 
 from django.http import HttpRequest
 from django.http.response import HttpResponseBase
@@ -20,33 +20,44 @@ from vinta_orgs.utils import import_from_string
 if TYPE_CHECKING:
     from vinta_orgs.models import AbstractOrganization
 
+_OrganizationT = TypeVar('_OrganizationT', bound='AbstractOrganization')
 
-class OrganizationRequest(HttpRequest):
+
+class OrganizationRequest(HttpRequest, Generic[_OrganizationT]):
     """The request as :class:`OrganizationMiddleware` leaves it.
 
     Nothing is ever instantiated from this class -- Django builds the request,
     and the middleware attaches the attributes below to whatever it is handed.
     It exists so that ``request.organization`` has a name and a type, both for
     the middleware itself and for the views and helpers a project writes
-    against it::
+    against it. Parameterize it with a swapped organization model to retain
+    that concrete type::
 
-        def my_view(request: OrganizationRequest) -> HttpResponse:
+        def my_view(request: OrganizationRequest[MyOrganization]) -> HttpResponse:
             ...
     """
 
     #: The organization this request belongs to, resolved on first read.
-    organization: AbstractOrganization | None
+    organization: _OrganizationT | None
     #: Memoizes :func:`get_organization` for the life of the request.
-    _cached_organization: AbstractOrganization | None
+    _cached_organization: _OrganizationT | None
     #: Whatever was bound before the request started, used as a fallback.
-    _organization_before_request: AbstractOrganization | None
+    _organization_before_request: _OrganizationT | None
     #: Restores that previous binding once the response is on its way out.
     _organization_token: OrganizationToken
 
 
+@overload
+def get_organization(request: OrganizationRequest[_OrganizationT]) -> _OrganizationT | None: ...
+
+
+@overload
+def get_organization(request: HttpRequest) -> AbstractOrganization | None: ...
+
+
 def get_organization(request: HttpRequest) -> AbstractOrganization | None:
     """Resolve the organization this request belongs to, at most once per request."""
-    stashed = cast('OrganizationRequest', request)
+    stashed = cast('OrganizationRequest[AbstractOrganization]', request)
 
     if not hasattr(request, '_cached_organization'):
         stashed._cached_organization = _retrieve_organization(stashed)
@@ -54,7 +65,7 @@ def get_organization(request: HttpRequest) -> AbstractOrganization | None:
     return stashed._cached_organization
 
 
-def _retrieve_organization(request: OrganizationRequest) -> AbstractOrganization | None:
+def _retrieve_organization(request: OrganizationRequest[AbstractOrganization]) -> AbstractOrganization | None:
     for organization_retriever in get_setting('ORGANIZATION_RETRIEVERS'):
         organization: AbstractOrganization | None = import_from_string(organization_retriever)(request)
 
@@ -87,9 +98,21 @@ class OrganizationMiddleware:
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponseBase]) -> None:
         self.get_response = get_response
 
+    @overload
     @classmethod
-    def get_current_organization(cls) -> AbstractOrganization | None:
-        return get_current_organization()
+    def get_current_organization(cls, expected_type: type[_OrganizationT]) -> _OrganizationT | None: ...
+
+    @overload
+    @classmethod
+    def get_current_organization(cls, expected_type: None = None) -> AbstractOrganization | None: ...
+
+    @classmethod
+    def get_current_organization(
+        cls, expected_type: type[AbstractOrganization] | None = None
+    ) -> AbstractOrganization | None:
+        if expected_type is None:
+            return get_current_organization()
+        return get_current_organization(expected_type)
 
     @classmethod
     def set_organization(cls, organization: AbstractOrganization | str | None) -> OrganizationToken:
@@ -99,8 +122,8 @@ class OrganizationMiddleware:
     def clear_organization(cls) -> OrganizationToken:
         return clear_current_organization()
 
-    def process_request(self, request: HttpRequest) -> OrganizationRequest:
-        stashed = cast('OrganizationRequest', request)
+    def process_request(self, request: HttpRequest) -> OrganizationRequest[AbstractOrganization]:
+        stashed = cast('OrganizationRequest[AbstractOrganization]', request)
 
         stashed._organization_before_request = get_current_organization()
         stashed.organization = cast('AbstractOrganization', SimpleLazyObject(lambda: get_organization(request)))
@@ -117,7 +140,7 @@ class OrganizationMiddleware:
 
     def _unbind_organization(self, request: HttpRequest) -> None:
         """Restore the organization bound before this request, exactly once."""
-        stashed = cast('OrganizationRequest', request)
+        stashed = cast('OrganizationRequest[AbstractOrganization]', request)
         token: OrganizationToken | None = getattr(request, '_organization_token', None)
 
         if token is not None:

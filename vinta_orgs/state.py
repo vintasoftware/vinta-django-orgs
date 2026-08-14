@@ -18,12 +18,14 @@ import threading
 from contextlib import ContextDecorator
 from contextvars import ContextVar, Token
 from types import TracebackType
-from typing import TYPE_CHECKING, Literal, Self, TypeAlias, cast
+from typing import TYPE_CHECKING, Generic, Literal, Self, TypeAlias, TypeVar, cast, overload
 
 from django.utils.functional import LazyObject, SimpleLazyObject
 
 if TYPE_CHECKING:
     from vinta_orgs.models import AbstractOrganization
+
+_OrganizationT = TypeVar('_OrganizationT', bound='AbstractOrganization')
 
 #: What callers may bind: a loaded ``Organization``, the slug of one, or a
 #: ``LazyObject`` standing in for one -- which is what the middleware binds so
@@ -69,9 +71,32 @@ def _coerce_organization(organization: OrganizationOrSlug | None) -> AbstractOrg
     return cast('AbstractOrganization', SimpleLazyObject(lambda: _get_organization_by_slug(organization)))
 
 
-def get_current_organization() -> AbstractOrganization | None:
-    """Return the organization bound to the current context, or ``None``."""
-    return _current_organization.get()
+@overload
+def get_current_organization(expected_type: type[_OrganizationT]) -> _OrganizationT | None: ...
+
+
+@overload
+def get_current_organization(expected_type: None = None) -> AbstractOrganization | None: ...
+
+
+def get_current_organization(
+    expected_type: type[AbstractOrganization] | None = None,
+) -> AbstractOrganization | None:
+    """Return the bound organization, optionally checked against a concrete type."""
+    if expected_type is not None:
+        from vinta_orgs.conf import get_organization_model
+
+        get_organization_model(expected_type)
+
+    organization = _current_organization.get()
+
+    if organization is not None and expected_type is not None and not isinstance(organization, expected_type):
+        raise TypeError(
+            "The current organization is '%s', not an instance of the expected model '%s'"
+            % (organization._meta.label, expected_type._meta.label)
+        )
+
+    return organization
 
 
 def set_current_organization(organization: OrganizationOrSlug | None) -> OrganizationToken:
@@ -98,7 +123,7 @@ def reset_current_organization(token: OrganizationToken) -> None:
     _current_organization.reset(token)
 
 
-class organization_context(ContextDecorator):
+class organization_context(ContextDecorator, Generic[_OrganizationT]):
     """Bind an organization for a block of code, then restore the previous one.
 
     Usable as a context manager or as a decorator, which is what makes
@@ -115,6 +140,12 @@ class organization_context(ContextDecorator):
     Nested and sequential uses restore the *previous* organization rather than
     clearing it, so a block never silently unscopes its caller.
     """
+
+    @overload
+    def __init__(self: organization_context[_OrganizationT], organization: _OrganizationT) -> None: ...
+
+    @overload
+    def __init__(self: organization_context[AbstractOrganization], organization: LazyObject | str | None) -> None: ...
 
     def __init__(self, organization: OrganizationOrSlug | None) -> None:
         self.organization = organization
@@ -134,9 +165,12 @@ class organization_context(ContextDecorator):
         # calls each get their own instance instead of sharing a token stack.
         return self.__class__(self.organization)
 
-    def __enter__(self) -> AbstractOrganization | None:
+    def __enter__(self) -> _OrganizationT | None:
         self._tokens.append(set_current_organization(self.organization))
-        return get_current_organization()
+        # The constructor overloads establish the invariant: an instance input
+        # binds its own concrete type, while slugs, lazy values and ``None``
+        # instantiate ``organization_context[AbstractOrganization]``.
+        return cast('_OrganizationT | None', get_current_organization())
 
     def __exit__(
         self,

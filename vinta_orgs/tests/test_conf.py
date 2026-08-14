@@ -52,6 +52,20 @@ class ModelResolutionTests(TestCase):
         self.assertTrue(issubclass(get_organization_model(), AbstractOrganization))
         self.assertTrue(issubclass(get_organization_membership_model(), AbstractOrganizationMembership))
 
+    def test_a_matching_expected_type_preserves_the_configured_model(self) -> None:
+        organization_model = get_organization_model()
+        membership_model = get_organization_membership_model()
+
+        self.assertIs(get_organization_model(organization_model), organization_model)
+        self.assertIs(get_organization_membership_model(membership_model), membership_model)
+
+    def test_an_incompatible_expected_type_is_reported(self) -> None:
+        with self.assertRaises(ImproperlyConfigured):
+            get_organization_model(OrganizationSite)  # type: ignore[type-var]
+
+        with self.assertRaises(ImproperlyConfigured):
+            get_organization_membership_model(OrganizationSite)  # type: ignore[type-var]
+
     def test_applying_defaults_does_not_overwrite_a_configured_value(self) -> None:
         with override_settings(ORGANIZATION_MODEL='somewhere.Else'):
             apply_setting_defaults()
