@@ -165,6 +165,14 @@ vinta\_orgs.serializers module
    :show-inheritance:
    :undoc-members:
 
+vinta\_orgs.services module
+---------------------------
+
+.. automodule:: vinta_orgs.services
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
 vinta\_orgs.settings module
 ---------------------------
 

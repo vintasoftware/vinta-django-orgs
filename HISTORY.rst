@@ -47,6 +47,10 @@ Added
   ``organization_context`` are generic for the same reason. Organization-safe
   relation declarations now type as Django fields, allowing django-stubs to
   infer their related model.
+* ``OrganizationService`` and ``MembershipService`` let an application bind
+  its concrete swapped models once and import typed service instances
+  everywhere else, instead of importing model classes or repeating type
+  witnesses at every helper call.
 
 0.3.0 (2026-08-13)
 ++++++++++++++++++

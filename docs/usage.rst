@@ -146,30 +146,41 @@ Reach for the configured model through the helpers, never by importing
     OrganizationMembership = get_organization_membership_model()
 
 The zero-argument form is typed against the abstract contracts because a type
-checker cannot read a runtime Django setting. When application code needs its
-extra fields, pass the concrete model as a checked type witness. The returned
-class and helper results then retain that concrete type:
+checker cannot read a runtime Django setting. Configure the typed services once
+when application code needs fields from its swapped models:
 
 .. code:: python
 
+    # myapp/organization_services.py
     from myapp.models import Organization as MyOrganization
     from myapp.models import OrganizationMembership as MyOrganizationMembership
-    from vinta_orgs.conf import get_organization_model, get_organization_membership_model
-    from vinta_orgs.helpers.organizations import create_organization
+    from vinta_orgs.services import MembershipService, OrganizationService
 
-    Organization = get_organization_model(MyOrganization)
-    OrganizationMembership = get_organization_membership_model(MyOrganizationMembership)
+    organizations = OrganizationService(MyOrganization)
+    memberships = MembershipService(organizations, MyOrganizationMembership)
 
-    organization = create_organization(
+Every other module imports those service instances rather than either model:
+
+.. code:: python
+
+    from myapp.organization_services import memberships, organizations
+
+    organization = organizations.create(
         name='Acme',
         slug='acme',
-        organization_model=MyOrganization,
     )
     organization.can_invite_organizations = True
 
-The same ``membership_model=`` witness is available on ``create_membership``,
-``get_active_memberships`` and ``resolve_membership_for_user``;
-``resolve_organization_for_user`` accepts ``organization_model=``.
+    membership = memberships.create(organization, request.user)
+    membership.notes = 'Created through onboarding'
+
+``OrganizationService`` needs only the organization type.
+``MembershipService`` infers both types from the organization service and the
+membership model passed to it, then checks that the configured membership
+relation targets that organization model. The module-level helpers remain
+available for lower-level code; their explicit ``organization_model=`` and
+``membership_model=`` witnesses provide the same concrete return types one call
+at a time.
 
 For a foreign key of your own, point at the setting so it follows the swap:
 

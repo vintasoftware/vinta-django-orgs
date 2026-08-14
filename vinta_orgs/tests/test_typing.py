@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from vinta_orgs.helpers.organizations import create_organization, update_organization
     from vinta_orgs.middleware import OrganizationMiddleware, OrganizationRequest, get_organization
     from vinta_orgs.models import AbstractOrganization, AbstractOrganizationMembership
+    from vinta_orgs.services import MembershipService, OrganizationService
     from vinta_orgs.state import get_current_organization, organization_context
 
     def _assert_swapped_model_types(
@@ -80,6 +81,27 @@ if TYPE_CHECKING:
 
         with organization_context('acme') as current:
             assert_type(current, AbstractOrganization | None)
+
+        organization_service = OrganizationService(CustomOrganization)
+        membership_service = MembershipService(organization_service, CustomOrganizationMembership)
+
+        assert_type(organization_service, OrganizationService[CustomOrganization])
+        assert_type(
+            membership_service,
+            MembershipService[CustomOrganization, CustomOrganizationMembership],
+        )
+        assert_type(organization_service.model, type[CustomOrganization])
+        assert_type(organization_service.create('Acme', 'acme'), CustomOrganization)
+        assert_type(organization_service.update(organization), CustomOrganization)
+        assert_type(organization_service.get_current(), CustomOrganization | None)
+        assert_type(organization_service.resolve_for_user(user), CustomOrganization | None)
+        assert_type(membership_service.model, type[CustomOrganizationMembership])
+        assert_type(membership_service.create(organization, user), CustomOrganizationMembership)
+        assert_type(membership_service.get_active(user), QuerySet[CustomOrganizationMembership])
+        assert_type(
+            membership_service.resolve_for_user(user),
+            CustomOrganizationMembership | None,
+        )
 
         # Keep both concrete parameters live so a future simplification cannot
         # accidentally turn one of them into an unconstrained ``Any``.
