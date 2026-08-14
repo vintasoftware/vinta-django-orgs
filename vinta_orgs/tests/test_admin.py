@@ -12,9 +12,8 @@ from django.test import RequestFactory
 
 from tests.utils import OrganizationsTestCase
 from vinta_orgs.conf import get_organization_membership_model
-from vinta_orgs.helpers.memberships import create_membership
-from vinta_orgs.helpers.organizations import create_default_organization_groups
 from vinta_orgs.models import OrganizationSite
+from vinta_orgs.tests.factories import create_default_organization_groups, create_membership
 
 # Resolved at runtime so the admin under test is the one registered for whichever
 # membership model is configured. Type checking runs against the default settings

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from django.contrib.sites.models import Site
 from django.contrib.sites.shortcuts import get_current_site
@@ -13,15 +13,15 @@ from vinta_orgs.cache import (
 )
 from vinta_orgs.conf import get_organization_membership_model, get_organization_model
 from vinta_orgs.exceptions import OrganizationAccessDeniedError, OrganizationNotFoundError
-from vinta_orgs.helpers.memberships import resolve_organization_for_user
 from vinta_orgs.models import OrganizationSite
+from vinta_orgs.services import MembershipService
 from vinta_orgs.settings import get_setting
 
 if TYPE_CHECKING:
-    from vinta_orgs.models import Organization
+    from vinta_orgs.models import AbstractOrganization, AbstractOrganizationMembership
 
 
-def retrieve_by_domain(request: HttpRequest) -> Organization | None:
+def retrieve_by_domain(request: HttpRequest) -> AbstractOrganization | None:
     try:
         site = get_current_site(request)
     except Site.DoesNotExist:
@@ -41,7 +41,7 @@ def retrieve_by_domain(request: HttpRequest) -> Organization | None:
         return None
 
     if cached is not None:
-        return cast('Organization', cached)
+        return cached
 
     # ``original_manager`` because the scoped manager would need the very
     # organization this function exists to find. ``select_related`` fetches the
@@ -56,7 +56,7 @@ def retrieve_by_domain(request: HttpRequest) -> Organization | None:
     return organization
 
 
-def _verify_membership(request: HttpRequest, organization: Organization) -> None:
+def _verify_membership(request: HttpRequest, organization: AbstractOrganization) -> None:
     """Refuse a caller-named organization the authenticated caller does not belong to.
 
     ``retrieve_by_domain`` needs nothing of the sort: the host is the authority
@@ -95,11 +95,11 @@ def _verify_membership(request: HttpRequest, organization: Organization) -> None
     # go on to read it.
     memberships = get_organization_membership_model()._default_manager
 
-    if not memberships.filter(user=user, organization=organization, is_active=True).exists():
+    if not memberships.filter(user_id=user.pk, organization_id=organization.pk, is_active=True).exists():
         raise OrganizationAccessDeniedError()
 
 
-def retrieve_by_http_header(request: HttpRequest) -> Organization | None:
+def retrieve_by_http_header(request: HttpRequest) -> AbstractOrganization | None:
     """The organization named by the ``ORGANIZATION_HTTP_HEADER`` header.
 
     An authenticated caller must hold an active membership in it; see
@@ -120,7 +120,7 @@ def retrieve_by_http_header(request: HttpRequest) -> Organization | None:
     return organization
 
 
-def retrieve_by_session(request: HttpRequest) -> Organization | None:
+def retrieve_by_session(request: HttpRequest) -> AbstractOrganization | None:
     """The organization whose slug the session holds.
 
     Membership-checked like the header is. The value is written by
@@ -141,7 +141,7 @@ def retrieve_by_session(request: HttpRequest) -> Organization | None:
     return organization
 
 
-def retrieve_by_user_membership(request: HttpRequest) -> Organization | None:
+def retrieve_by_user_membership(request: HttpRequest) -> AbstractOrganization | None:
     """The authenticated caller's own organization, when they have exactly one.
 
     Not in ``ORGANIZATION_RETRIEVERS`` by default -- it only makes sense on a
@@ -160,7 +160,8 @@ def retrieve_by_user_membership(request: HttpRequest) -> Organization | None:
     A caller with several memberships and nothing naming one raises
     ``AmbiguousOrganizationError`` (a ``BadRequest``, so a 400) rather than
     resolving to whichever membership is oldest. See
-    :func:`vinta_orgs.helpers.memberships.resolve_membership_for_user` for the
+    :meth:`vinta_orgs.services.MembershipService.resolve_for_user` for the
     full table.
     """
-    return resolve_organization_for_user(getattr(request, 'user', None))
+    service: MembershipService[AbstractOrganization, AbstractOrganizationMembership] = MembershipService()
+    return service.resolve_organization_for_user(getattr(request, 'user', None))

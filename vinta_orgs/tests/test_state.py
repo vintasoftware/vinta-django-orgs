@@ -1,9 +1,14 @@
 import threading
+from typing import TYPE_CHECKING
 
+from django.core.exceptions import ImproperlyConfigured
 from django.test import TestCase
 from django.utils.functional import SimpleLazyObject
 
-from vinta_orgs.helpers.organizations import (
+from vinta_orgs.conf import get_organization_model
+from vinta_orgs.models import AbstractOrganization, OrganizationSite
+from vinta_orgs.state import OrganizationState
+from vinta_orgs.tests.factories import (
     clear_current_organization,
     create_organization,
     get_current_organization,
@@ -11,7 +16,15 @@ from vinta_orgs.helpers.organizations import (
     reset_current_organization,
     set_current_organization,
 )
-from vinta_orgs.models import Organization
+
+if TYPE_CHECKING:
+    from vinta_orgs.models import Organization
+else:
+    Organization = get_organization_model()
+
+
+class OrganizationsState(OrganizationState[Organization]):
+    model_class = Organization
 
 
 class CurrentOrganizationTests(TestCase):
@@ -30,6 +43,20 @@ class CurrentOrganizationTests(TestCase):
     def test_set_by_instance(self) -> None:
         set_current_organization(self.organization_1)
         self.assertEqual(get_current_organization(), self.organization_1)
+
+    def test_specialized_state_exposes_and_returns_its_concrete_model(self) -> None:
+        state = OrganizationsState()
+        state.set(self.organization_1)
+
+        self.assertIs(state.model, Organization)
+        self.assertIs(state.get(), self.organization_1)
+
+    def test_an_incompatible_expected_type_is_reported(self) -> None:
+        class InvalidOrganizationState(OrganizationState[Organization]):
+            model_class = OrganizationSite  # type: ignore[assignment]
+
+        with self.assertRaises(ImproperlyConfigured):
+            InvalidOrganizationState()
 
     def test_set_by_slug_does_not_query_until_read(self) -> None:
         with self.assertNumQueries(0):
@@ -117,7 +144,7 @@ class OrganizationContextTests(TestCase):
 
     def test_works_as_a_decorator(self) -> None:
         @organization_context(self.organization_1)
-        def read_organization() -> Organization | None:
+        def read_organization() -> AbstractOrganization | None:
             return get_current_organization()
 
         self.assertEqual(read_organization(), self.organization_1)
@@ -125,7 +152,7 @@ class OrganizationContextTests(TestCase):
 
     def test_decorator_supports_recursion(self) -> None:
         @organization_context(self.organization_1)
-        def countdown(remaining: int) -> Organization | None:
+        def countdown(remaining: int) -> AbstractOrganization | None:
             self.assertEqual(get_current_organization(), self.organization_1)
             if remaining:
                 countdown(remaining - 1)

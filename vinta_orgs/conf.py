@@ -26,14 +26,17 @@ to exist, not merely have a default this module knows about.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar, overload
 
 from django.apps import apps as django_apps
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
 if TYPE_CHECKING:
-    from vinta_orgs.models import Organization, OrganizationMembership
+    from vinta_orgs.models import AbstractOrganization, AbstractOrganizationMembership
+
+_OrganizationT = TypeVar('_OrganizationT', bound='AbstractOrganization')
+_OrganizationMembershipT = TypeVar('_OrganizationMembershipT', bound='AbstractOrganizationMembership')
 
 #: Setting names, so nothing has to spell them as bare strings.
 ORGANIZATION_MODEL_SETTING = 'ORGANIZATION_MODEL'
@@ -84,31 +87,66 @@ def _get_model(setting_name: str, model_string: str) -> Any:
         ) from exc
 
 
-def get_organization_model() -> type[Organization]:
+@overload
+def get_organization_model(expected_type: type[_OrganizationT]) -> type[_OrganizationT]: ...
+
+
+@overload
+def get_organization_model(expected_type: None = None) -> type[AbstractOrganization]: ...
+
+
+def get_organization_model(
+    expected_type: type[AbstractOrganization] | None = None,
+) -> type[AbstractOrganization]:
     """Return the organization model this project is configured to use.
 
     The counterpart of ``django.contrib.auth.get_user_model()``, and it has the
     same rule: call it, do not import ``Organization`` directly, or a project
     that swapped the model gets the wrong class.
+
+    Pass the project's concrete class as ``expected_type`` to validate the
+    setting and preserve that class in the static return type.
     """
-    # Annotated as the *concrete* model rather than ``AbstractOrganization``,
-    # which is a deliberate approximation: reverse accessors
-    # (``organization.memberships``, ``organization.organization_sites``) are
-    # generated only for concrete models, so the abstract base would type-check
-    # away half of what this library does with the object it returns.
-    #
-    # It is also what actually holds for whoever is running the type checker.
-    # mypy analyses one settings module at a time, and under that settings module
-    # this returns exactly one class. django-stubs makes the same approximation
-    # for ``get_user_model()``. A project that swaps the model reads its own
-    # class directly and gets its own fields.
-    organization_model: type[Organization] = _get_model(ORGANIZATION_MODEL_SETTING, organization_model_string())
+    # The abstract base is the stable contract shared by every configured
+    # model. A caller that passes its concrete class gets a checked, narrowed
+    # return type through the overload above.
+    organization_model: type[AbstractOrganization] = _get_model(
+        ORGANIZATION_MODEL_SETTING, organization_model_string()
+    )
+
+    if expected_type is not None and not issubclass(organization_model, expected_type):
+        raise ImproperlyConfigured(
+            "%s resolves to '%s', not a subclass of the expected model '%s'"
+            % (ORGANIZATION_MODEL_SETTING, organization_model._meta.label, expected_type._meta.label)
+        )
+
     return organization_model
 
 
-def get_organization_membership_model() -> type[OrganizationMembership]:
-    """Return the membership model this project is configured to use."""
-    membership_model: type[OrganizationMembership] = _get_model(
+@overload
+def get_organization_membership_model(
+    expected_type: type[_OrganizationMembershipT],
+) -> type[_OrganizationMembershipT]: ...
+
+
+@overload
+def get_organization_membership_model(
+    expected_type: None = None,
+) -> type[AbstractOrganizationMembership]: ...
+
+
+def get_organization_membership_model(
+    expected_type: type[AbstractOrganizationMembership] | None = None,
+) -> type[AbstractOrganizationMembership]:
+    """Return the configured membership model, optionally checked and narrowed."""
+    membership_model: type[AbstractOrganizationMembership] = _get_model(
         ORGANIZATION_MEMBERSHIP_MODEL_SETTING, organization_membership_model_string()
     )
+
+    if expected_type is not None and not issubclass(membership_model, expected_type):
+        raise ImproperlyConfigured(
+            "%s resolves to '%s', not a subclass of the expected model '%s'"
+            % (ORGANIZATION_MEMBERSHIP_MODEL_SETTING, membership_model._meta.label, expected_type._meta.label)
+        )
+
     return membership_model

@@ -18,27 +18,28 @@ scope a queryset whose class does not inherit
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable, Mapping
 from typing import TYPE_CHECKING, Any, Self, TypeVar
 
-from django.db import connections
+from django.db import connections, transaction
 from django.db.models import Exists, OuterRef, Q, QuerySet, Subquery
 from django.db.models.constants import LOOKUP_SEP
 
-from vinta_orgs.exceptions import OrganizationNotFoundError
+from vinta_orgs._organization_updates import allow_organization_update, organization_update_is_allowed
+from vinta_orgs._state import get_bound_organization
+from vinta_orgs.exceptions import OrganizationCannotBeUpdatedError, OrganizationNotFoundError
 from vinta_orgs.fields import (
     expand_safe_relation_field_names,
     get_organization_safe_relations,
     rewrite_safe_relation_kwargs,
 )
 from vinta_orgs.settings import get_setting
-from vinta_orgs.state import get_current_organization
 
 if TYPE_CHECKING:
     from django.db.backends.base.base import BaseDatabaseWrapper
     from django.db.models.sql.compiler import SQLCompiler, _AsSqlType
 
-    from vinta_orgs.models import Organization
+    from vinta_orgs.models import AbstractOrganization
 
 #: Preserves the caller's queryset class through a scoping call, so a project
 #: that points ``_queryset_class`` at its own subclass keeps its own methods.
@@ -46,14 +47,14 @@ _QuerySetT = TypeVar('_QuerySetT', bound=QuerySet[Any])
 
 
 def filter_queryset_by_organization(
-    queryset: _QuerySetT, organization: Organization, organization_lookup: str = 'organization'
+    queryset: _QuerySetT, organization: AbstractOrganization, organization_lookup: str = 'organization'
 ) -> _QuerySetT:
     """Restrict ``queryset`` to ``organization``."""
     return queryset.filter(**{organization_lookup: organization})
 
 
 def exclude_queryset_by_organization(
-    queryset: _QuerySetT, organization: Organization, organization_lookup: str = 'organization'
+    queryset: _QuerySetT, organization: AbstractOrganization, organization_lookup: str = 'organization'
 ) -> _QuerySetT:
     """Drop every row of ``queryset`` belonging to ``organization``."""
     return queryset.exclude(**{organization_lookup: organization})
@@ -112,13 +113,13 @@ def scope_queryset_to_current_organization(
     "no data yet", and does nothing about the ``get_or_create`` that looks a row
     up across every tenant before writing to it.
     """
-    organization = get_current_organization()
+    organization = get_bound_organization()
 
     if not organization:
         if get_setting('STRICT_ORGANIZATION_FILTER'):
             raise OrganizationNotFoundError(
                 'No organization is bound to the current context, so %s cannot be '
-                'queried. Bind one with `organization_context(...)`, scope the query '
+                'queried. Bind one with `organization_state.context(...)`, scope the query '
                 'explicitly with `filter_by_organization(...)`, or read every '
                 'organization through `original_manager`.' % queryset.model.__name__
             )
@@ -146,11 +147,11 @@ class OrganizationScopedQuerySetMixin(_QuerySetBase):
 
     organization_lookup: str = 'organization'
 
-    def filter_by_organization(self, organization: Organization) -> Self:
+    def filter_by_organization(self, organization: AbstractOrganization) -> Self:
         """Restrict the queryset to ``organization``."""
         return filter_queryset_by_organization(self, organization, self.organization_lookup)
 
-    def exclude_by_organization(self, organization: Organization) -> Self:
+    def exclude_by_organization(self, organization: AbstractOrganization) -> Self:
         """Drop every row belonging to ``organization``."""
         return exclude_queryset_by_organization(self, organization, self.organization_lookup)
 
@@ -214,6 +215,8 @@ class SingleOrganizationQuerySet(OrganizationScopedQuerySetMixin, QuerySet):
     """Queryset for models with an ``organization`` foreign key."""
 
     organization_lookup = 'organization'
+
+    _organization_update_fields = frozenset({'organization', 'organization_id'})
 
     def _related_exists_subquery(self, relation: str, conditions: dict[str, Any]) -> QuerySet[Any]:
         """Correlate ``relation``'s target back to the outer row, on key and organization.
@@ -380,7 +383,7 @@ class SingleOrganizationQuerySet(OrganizationScopedQuerySetMixin, QuerySet):
 
         super()._fetch_all()
 
-    def update(self, **kwargs: Any) -> int:
+    def update(self, *, unsafe_organization_update: bool = False, **kwargs: Any) -> int:
         # ``update(article=…)`` names the non-concrete half of an
         # organization-safe relation, which Django refuses to write. Point it at
         # the concrete ``article_fk`` instead so the call site does not have to
@@ -392,15 +395,174 @@ class SingleOrganizationQuerySet(OrganizationScopedQuerySetMixin, QuerySet):
         # organization. The target is expected to be in the same organization
         # already; if it is not, the rows read as missing through the relation
         # rather than as another organization's data.
-        return super().update(**rewrite_safe_relation_kwargs(self.model, kwargs))
+        rewritten = rewrite_safe_relation_kwargs(self.model, kwargs)
 
-    def bulk_update(self, objs: Iterable[Any], fields: Iterable[str], *args: Any, **kwargs: Any) -> int:
+        if (
+            self._organization_update_fields.intersection(rewritten)
+            and not unsafe_organization_update
+            and not organization_update_is_allowed()
+        ):
+            raise OrganizationCannotBeUpdatedError()
+
+        if unsafe_organization_update:
+            with allow_organization_update():
+                return super().update(**rewritten)
+
+        return super().update(**rewritten)
+
+    def bulk_update(
+        self,
+        objs: Iterable[Any],
+        fields: Iterable[str],
+        *args: Any,
+        unsafe_organization_update: bool = False,
+        **kwargs: Any,
+    ) -> int:
         # Unlike ``update()`` above, each object carries its own consistent
         # values, so a safe relation expands to both of its fields.
         #
         # ``list(fields)`` because the expansion walks the names twice and the
         # signature Django documents accepts any iterable, including a generator.
-        return super().bulk_update(objs, expand_safe_relation_field_names(self.model, list(fields)), *args, **kwargs)
+        objects = tuple(objs)
+        expanded_fields = list(expand_safe_relation_field_names(self.model, list(fields)))
+        writes_organization = bool(self._organization_update_fields.intersection(expanded_fields))
+
+        if writes_organization and not unsafe_organization_update and not organization_update_is_allowed():
+            primary_keys = [obj.pk for obj in objects if obj.pk is not None]
+
+            with transaction.atomic(using=self.db):
+                persisted = dict(
+                    self.model._base_manager.using(self.db)
+                    .select_for_update()
+                    .filter(pk__in=primary_keys)
+                    .values_list('pk', 'organization_id')
+                )
+
+                if any(obj.pk in persisted and persisted[obj.pk] != obj.organization_id for obj in objects):
+                    raise OrganizationCannotBeUpdatedError()
+
+                # Django implements bulk_update() through nested update() calls.
+                # This block records that the organization values were checked.
+                with allow_organization_update():
+                    return super().bulk_update(objects, expanded_fields, *args, **kwargs)
+
+        if unsafe_organization_update:
+            with allow_organization_update():
+                return super().bulk_update(objects, expanded_fields, *args, **kwargs)
+
+        return super().bulk_update(objects, expanded_fields, *args, **kwargs)
+
+    async def abulk_update(
+        self,
+        objs: Iterable[Any],
+        fields: Iterable[str],
+        batch_size: int | None = None,
+        *,
+        unsafe_organization_update: bool = False,
+    ) -> int:
+        from asgiref.sync import sync_to_async
+
+        return await sync_to_async(self.bulk_update)(
+            objs,
+            fields,
+            batch_size=batch_size,
+            unsafe_organization_update=unsafe_organization_update,
+        )
+
+    def update_or_create(
+        self,
+        defaults: Mapping[str, Any] | None = None,
+        create_defaults: Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> tuple[Any, bool]:
+        unsafe_organization_update = kwargs.pop('unsafe_organization_update', False)
+        if unsafe_organization_update:
+            with allow_organization_update():
+                return super().update_or_create(defaults=defaults, create_defaults=create_defaults, **kwargs)
+
+        return super().update_or_create(defaults=defaults, create_defaults=create_defaults, **kwargs)
+
+    async def aupdate_or_create(
+        self,
+        defaults: Mapping[str, Any] | None = None,
+        create_defaults: Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> tuple[Any, bool]:
+        unsafe_organization_update = kwargs.pop('unsafe_organization_update', False)
+        from asgiref.sync import sync_to_async
+
+        return await sync_to_async(self.update_or_create)(
+            defaults=defaults,
+            create_defaults=create_defaults,
+            unsafe_organization_update=unsafe_organization_update,
+            **kwargs,
+        )
+
+    def bulk_create(
+        self,
+        objs: Iterable[Any],
+        batch_size: int | None = None,
+        ignore_conflicts: bool = False,
+        update_conflicts: bool = False,
+        update_fields: Collection[str] | None = None,
+        unique_fields: Collection[str] | None = None,
+        *,
+        unsafe_organization_update: bool = False,
+    ) -> list[Any]:
+        update_fields = tuple(update_fields) if update_fields is not None else None
+        unique_fields = tuple(unique_fields) if unique_fields is not None else None
+        update_field_names = set(update_fields or ())
+
+        if (
+            update_conflicts
+            and self._organization_update_fields.intersection(update_field_names)
+            and not unsafe_organization_update
+            and not organization_update_is_allowed()
+        ):
+            raise OrganizationCannotBeUpdatedError()
+
+        if unsafe_organization_update:
+            with allow_organization_update():
+                return super().bulk_create(
+                    objs,
+                    batch_size=batch_size,
+                    ignore_conflicts=ignore_conflicts,
+                    update_conflicts=update_conflicts,
+                    update_fields=update_fields,
+                    unique_fields=unique_fields,
+                )
+
+        return super().bulk_create(
+            objs,
+            batch_size=batch_size,
+            ignore_conflicts=ignore_conflicts,
+            update_conflicts=update_conflicts,
+            update_fields=update_fields,
+            unique_fields=unique_fields,
+        )
+
+    async def abulk_create(
+        self,
+        objs: Iterable[Any],
+        batch_size: int | None = None,
+        ignore_conflicts: bool = False,
+        update_conflicts: bool = False,
+        update_fields: Collection[str] | None = None,
+        unique_fields: Collection[str] | None = None,
+        *,
+        unsafe_organization_update: bool = False,
+    ) -> list[Any]:
+        from asgiref.sync import sync_to_async
+
+        return await sync_to_async(self.bulk_create)(
+            objs,
+            batch_size=batch_size,
+            ignore_conflicts=ignore_conflicts,
+            update_conflicts=update_conflicts,
+            update_fields=update_fields,
+            unique_fields=unique_fields,
+            unsafe_organization_update=unsafe_organization_update,
+        )
 
     def with_organization(self) -> Self:
         """Fetch each row's organization in the same query.
@@ -438,7 +600,7 @@ class OrganizationMembershipQuerySet(SingleOrganizationQuerySet):
         """``user``'s active memberships, oldest first, with the organization fetched.
 
         The organization switcher's query, and the one
-        :func:`vinta_orgs.helpers.memberships.resolve_organization_for_user`
+        :meth:`vinta_orgs.services.MembershipService.resolve_organization_for_user`
         reads. Ordered so that "the caller's only organization" is a stable
         answer rather than whatever the database returned first, and
         ``select_related`` because every caller goes on to read

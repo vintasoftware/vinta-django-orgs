@@ -16,13 +16,12 @@ from vinta_orgs.exceptions import (
     OrganizationAccessDeniedError,
     OrganizationNotFoundError,
 )
-from vinta_orgs.helpers.memberships import create_membership
-from vinta_orgs.helpers.organizations import clear_current_organization
 from vinta_orgs.organization_retrievers import (
     retrieve_by_http_header,
     retrieve_by_session,
     retrieve_by_user_membership,
 )
+from vinta_orgs.tests.factories import clear_current_organization, create_membership
 
 if TYPE_CHECKING:
     from vinta_orgs.models import Organization

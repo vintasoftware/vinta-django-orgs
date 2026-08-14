@@ -6,9 +6,9 @@ from django.contrib.sites.models import Site
 from django.core.cache import cache
 from django.test import RequestFactory, TestCase, override_settings
 
-from vinta_orgs.helpers.organizations import clear_current_organization, create_organization
-from vinta_orgs.models import Organization, OrganizationSite
+from vinta_orgs.models import AbstractOrganization, OrganizationSite
 from vinta_orgs.organization_retrievers import retrieve_by_domain
+from vinta_orgs.tests.factories import clear_current_organization, create_organization
 
 CACHING = {'CACHE_ORGANIZATION_RETRIEVAL': True}
 
@@ -22,7 +22,7 @@ class OrganizationRetrievalCacheTests(TestCase):
     def tearDown(self) -> None:
         cache.clear()
 
-    def _retrieve(self) -> Organization | None:
+    def _retrieve(self) -> AbstractOrganization | None:
         request = RequestFactory().get('/', HTTP_HOST='test.localhost:8000')
         return retrieve_by_domain(request)
 
@@ -73,7 +73,7 @@ class OrganizationRetrievalCacheTests(TestCase):
         other = create_organization(name='other', slug='other')
         organization_site = OrganizationSite.original_manager.get(site__domain='test.localhost:8000')
         organization_site.organization = other
-        organization_site.save()
+        organization_site.save(unsafe_organization_update=True)
 
         self.assertEqual(self._retrieve(), other)
 

@@ -23,7 +23,6 @@ from vinta_orgs.conf import (
     organization_membership_model_string,
     organization_model_string,
 )
-from vinta_orgs.helpers.organizations import organization_context
 from vinta_orgs.models import (
     AbstractOrganization,
     AbstractOrganizationMembership,
@@ -32,6 +31,7 @@ from vinta_orgs.models import (
     OrganizationSite,
 )
 from vinta_orgs.settings import get_setting
+from vinta_orgs.tests.factories import organization_context
 
 
 class ModelResolutionTests(TestCase):
@@ -51,6 +51,20 @@ class ModelResolutionTests(TestCase):
         # guaranteed to be there.
         self.assertTrue(issubclass(get_organization_model(), AbstractOrganization))
         self.assertTrue(issubclass(get_organization_membership_model(), AbstractOrganizationMembership))
+
+    def test_a_matching_expected_type_preserves_the_configured_model(self) -> None:
+        organization_model = get_organization_model()
+        membership_model = get_organization_membership_model()
+
+        self.assertIs(get_organization_model(organization_model), organization_model)
+        self.assertIs(get_organization_membership_model(membership_model), membership_model)
+
+    def test_an_incompatible_expected_type_is_reported(self) -> None:
+        with self.assertRaises(ImproperlyConfigured):
+            get_organization_model(OrganizationSite)  # type: ignore[type-var]
+
+        with self.assertRaises(ImproperlyConfigured):
+            get_organization_membership_model(OrganizationSite)  # type: ignore[type-var]
 
     def test_applying_defaults_does_not_overwrite_a_configured_value(self) -> None:
         with override_settings(ORGANIZATION_MODEL='somewhere.Else'):

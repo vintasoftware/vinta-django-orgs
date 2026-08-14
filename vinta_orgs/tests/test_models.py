@@ -16,9 +16,16 @@ from django.test import TestCase, override_settings
 from vinta_orgs.conf import get_organization_membership_model, get_organization_model
 from vinta_orgs.exceptions import OrganizationNotFoundError
 from vinta_orgs.managers import OrganizationScopedManagerMixin
-from vinta_orgs.middleware import OrganizationMiddleware
 from vinta_orgs.models import OrganizationSite
-from vinta_orgs.state import clear_current_organization, organization_context, set_current_organization
+from vinta_orgs.tests.factories import (
+    clear_current_organization,
+    create_membership,
+    create_organization,
+    get_active_memberships,
+    organization_context,
+    resolve_membership_for_user,
+    set_current_organization,
+)
 
 # Resolved at runtime, so this module exercises whichever models
 # ``ORGANIZATION_MODEL`` and ``ORGANIZATION_MEMBERSHIP_MODEL`` name -- the
@@ -37,16 +44,21 @@ class OrganizationTests(TestCase):
     def test_create(self) -> None:
         organization = Organization(name='test', slug='test')
         organization.save()
-        OrganizationMiddleware.set_organization(organization)
+        set_current_organization(organization)
         self.assertEqual(Organization.objects.all().count(), 1)
         self.assertEqual(organization.organization_sites.all().count(), 0)
+
+    def test_create_service_uses_the_configured_model(self) -> None:
+        organization = create_organization('test', 'test')
+
+        self.assertIs(type(organization), Organization)
 
 
 class OrganizationSiteTests(TestCase):
     def setUp(self) -> None:
         self.organization = Organization.objects.create(name='test', slug='test')
         self.site = Site.objects.create(name='test', domain='test.site.com')
-        OrganizationMiddleware.set_organization(self.organization)
+        set_current_organization(self.organization)
 
     def test_create(self) -> None:
         OrganizationSite.objects.create(organization=self.organization, site=self.site)
@@ -63,11 +75,18 @@ class OrganizationMembershipTests(TestCase):
             email='test@sharedschemaorganizations.com',
             password='test',
         )
-        OrganizationMiddleware.set_organization(self.organization)
+        set_current_organization(self.organization)
 
     def test_create(self) -> None:
         OrganizationMembership.objects.create(organization=self.organization, user=self.user)
         self.assertEqual(OrganizationMembership.objects.all().count(), 1)
+
+    def test_membership_service_uses_the_configured_model(self) -> None:
+        membership = create_membership(self.organization, self.user)
+
+        self.assertIs(type(membership), OrganizationMembership)
+        self.assertEqual(list(get_active_memberships(self.user)), [membership])
+        self.assertEqual(resolve_membership_for_user(self.user), membership)
 
 
 class OrganizationMembershipManagerTests(TestCase):

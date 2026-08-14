@@ -3,6 +3,127 @@
 History
 -------
 
+0.4.0 (2026-08-14)
+++++++++++++++++++++
+
+Breaking
+~~~~~~~~
+
+* **The function-based organization API is removed.** The
+  ``vinta_orgs.helpers`` package, including its ``organizations`` and
+  ``memberships`` modules, no longer exists. Bind the project's swapped models
+  once with declarative service subclasses instead:
+
+  .. code:: python
+
+      from myapp.models import Organization, OrganizationMembership
+      from vinta_orgs.services import MembershipService, OrganizationService
+
+      class Organizations(OrganizationService[Organization]):
+          model_class = Organization
+
+      class Memberships(MembershipService[Organization, OrganizationMembership]):
+          model_class = OrganizationMembership
+
+      organizations = Organizations()
+      memberships = Memberships()
+
+  Replace ``create_organization`` / ``update_organization`` with
+  ``organizations.create`` / ``organizations.update``;
+  ``create_membership`` / ``get_active_memberships`` with
+  ``memberships.create`` / ``memberships.get_active``; and the two resolver
+  helpers with ``memberships.resolve_for_user`` /
+  ``memberships.resolve_organization_for_user``. The default group operation is
+  ``organizations.create_default_groups``. An explicitly configured
+  ``ORGANIZATION_GROUP_SEEDERS`` path must change from the deleted helper to
+  ``vinta_orgs.seeding.create_default_organization_groups``.
+
+* **Organization context state is class-specialized too.** The module-level
+  ``get_current_organization``, ``set_current_organization``,
+  ``clear_current_organization``, ``reset_current_organization`` and
+  ``organization_context`` APIs are removed, as are
+  ``OrganizationMiddleware.get_current_organization()``, ``set_organization()``
+  and ``clear_organization()``. Define one typed state object alongside the
+  services:
+
+  .. code:: python
+
+      from vinta_orgs.state import OrganizationState
+
+      class ProjectOrganizationState(OrganizationState[Organization]):
+          model_class = Organization
+
+      organization_state = ProjectOrganizationState()
+
+  The replacements are ``organization_state.get()``, ``set()``, ``clear()``,
+  ``reset()`` and ``context()``. The old ``OrganizationOrSlug`` alias and
+  directly constructed ``organization_context`` class are no longer public;
+  ``organization_state.context(...)`` returns the typed context manager.
+
+* **Moving an existing row between organizations now requires an explicit
+  unsafe opt-in.** Calls that previously changed ``organization`` or
+  ``organization_id`` now raise ``OrganizationCannotBeUpdatedError``. Data
+  migrations and other deliberately cross-tenant maintenance code pass
+  ``unsafe_organization_update=True`` to ``save()``, ``update()``,
+  ``bulk_update()``, ``update_or_create()`` or conflict-updating
+  ``bulk_create()``. Their asynchronous forms accept the same option. This is
+  the intentional security hardening described below.
+
+* **Settings-driven model APIs no longer pretend that the package's concrete
+  models are always configured.** The zero-argument model getters and other
+  APIs without a concrete generic input are typed against
+  ``AbstractOrganization`` / ``AbstractOrganizationMembership``. Runtime model
+  resolution is unchanged. Pass the project's concrete class to
+  ``get_organization_model(MyOrganization)`` /
+  ``get_organization_membership_model(MyMembership)`` when a model class itself
+  is needed; use the specialized services, state and ``OrganizationRequest``
+  for concrete instance return types.
+
+Security
+~~~~~~~~
+
+* Organization ownership is immutable on existing rows. ``save()``,
+  ``update()``, ``bulk_update()``, ``update_or_create()`` and conflict-updating
+  ``bulk_create()`` -- including their asynchronous forms -- refuse a change to
+  ``organization`` with ``OrganizationCannotBeUpdatedError``. A deliberate data
+  migration can opt in per call with ``unsafe_organization_update=True``.
+
+Fixed
+~~~~~
+
+* Assigning ``None`` to a nullable ``OrganizationSafeForeignKey`` or
+  ``OrganizationSafeOneToOneField`` clears only its target key. It no longer
+  clears the row's ``organization_id`` and leaves the next save able to stamp
+  the row into whichever organization happens to be bound.
+* Reverse related managers and prefetches derive their scope from the source
+  instance instead of requiring an ambient organization. ``bulk_update()`` can
+  likewise address the primary keys of instances supplied by an unbound
+  caller. Explicit-organization ``get_or_create()`` and ``update_or_create()``
+  perform their lookup unscoped.
+* ``validate_unique()`` and ``validate_constraints()`` run Django's database
+  probes through an unscoped default manager, matching global database
+  constraints and allowing model forms to validate outside a request.
+
+Added
+~~~~~
+
+* ``unscoped_default_manager()`` is a narrow, context-local escape hatch for
+  Django internals such as ``ForeignKey.formfield()`` that hard-code
+  ``_default_manager`` and offer no queryset override.
+* ``UNRESOLVED_ORGANIZATION`` lets a resolver for a non-slug identifier preserve
+  the difference between "no identifier supplied" and "identifier supplied but
+  not found" without inventing a sentinel slug.
+* Organization and membership operations are centralized in generic
+  ``OrganizationService`` and ``MembershipService`` classes. Applications bind
+  their swapped models once through declarative ``model_class`` subclasses.
+* ``MembershipService`` derives the organization model from its membership
+  model's foreign key and therefore needs no organization-service constructor
+  parameter. ``OrganizationState`` uses the same specialization pattern for
+  typed ``get()``, ``set()`` and ``context()`` operations.
+* ``OrganizationRequest`` remains generic, and organization-safe relation
+  declarations now type as Django fields, allowing django-stubs to infer their
+  related model.
+
 0.3.0 (2026-08-13)
 ++++++++++++++++++
 
@@ -91,8 +212,8 @@ Added
   resolved there at all. Binds for the request and releases in a ``finally``
   around ``dispatch``.
 
-* ``vinta_orgs.helpers.memberships.resolve_membership_for_user`` and its
-  organization-shaped sibling: the full resolution table (0 / 1 / 2+ active
+* ``vinta_orgs.services.MembershipService.resolve_for_user`` and its
+  organization-shaped method: the full resolution table (0 / 1 / 2+ active
   memberships against a named / absent / non-member organization), with
   ``AmbiguousOrganizationError`` for a multi-organization caller who named none
   -- a 400 rather than a silent pick by row creation order -- and

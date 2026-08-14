@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from vinta_orgs.auth_backends import OrganizationModelBackend
-from vinta_orgs.helpers.organizations import get_current_organization
+from vinta_orgs.state import organization_state
 from vinta_orgs_custom_data.models import (
     OrganizationSpecificTablesPermission,
     OrganizationSpecificTablesRelationship,
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from django.db.models import Model, QuerySet
 
     from vinta_orgs.auth_backends import AnyUser
-    from vinta_orgs.models import Organization
+    from vinta_orgs.models import AbstractOrganization
 
 
 class OrganizationSpecificTablesBackend(OrganizationModelBackend):
@@ -31,7 +31,7 @@ class OrganizationSpecificTablesBackend(OrganizationModelBackend):
         return OrganizationSpecificTablesPermission.objects.filter(**{relationship_groups_query: relationship})
 
     def _get_relationship(
-        self, user_obj: AnyUser, organization: Organization
+        self, user_obj: AnyUser, organization: AbstractOrganization
     ) -> OrganizationSpecificTablesRelationship | None:
         """Return this user's relationship to ``organization``, at most one query per organization.
 
@@ -55,7 +55,7 @@ class OrganizationSpecificTablesBackend(OrganizationModelBackend):
         if not user_obj.is_active or user_obj.is_anonymous or obj is not None:
             return set()
 
-        organization = get_current_organization()
+        organization = organization_state.get()
         if not organization:
             return set()
 
@@ -108,7 +108,7 @@ class OrganizationSpecificTablesBackend(OrganizationModelBackend):
         if not user_obj.is_active or user_obj.is_anonymous or obj is not None:
             return set()
 
-        organization = get_current_organization()
+        organization = organization_state.get()
         if not organization:
             return set()
 

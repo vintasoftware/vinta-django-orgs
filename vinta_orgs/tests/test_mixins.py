@@ -1,5 +1,3 @@
-from typing import Any, cast
-
 from django.contrib.auth.models import User
 from django.db import models
 from django.test import TestCase, override_settings
@@ -7,14 +5,14 @@ from model_bakery import baker
 
 from exampleproject.articles.models import Article, Comment, Tag
 from vinta_orgs.exceptions import OrganizationNotFoundError
-from vinta_orgs.helpers.organizations import (
+from vinta_orgs.managers import OrganizationScopedManagerMixin
+from vinta_orgs.mixins import get_default_organization
+from vinta_orgs.models import OrganizationMembership, OrganizationSite
+from vinta_orgs.tests.factories import (
     clear_current_organization,
     create_organization,
     set_current_organization,
 )
-from vinta_orgs.managers import OrganizationScopedManagerMixin
-from vinta_orgs.mixins import get_default_organization
-from vinta_orgs.models import OrganizationMembership, OrganizationSite
 
 
 class SingleOrganizationModelMixinQueryCountTests(TestCase):
@@ -52,7 +50,12 @@ class SingleOrganizationModelMixinQueryCountTests(TestCase):
 
     def test_bulk_create_makes_a_single_query(self) -> None:
         articles = [
-            Article(organization=self.organization, title='Article %d' % i, text='Test', author=self.user)
+            Article(
+                organization=self.organization,
+                title='Article %d' % i,
+                text='Test',
+                author=self.user,
+            )
             for i in range(10)
         ]
 
@@ -239,7 +242,8 @@ class OrganizationIndexTests(TestCase):
                 # Asserted through ``deconstruct()`` because that is what the
                 # migration writes: ``ForeignKey`` emits ``db_index=False``
                 # there precisely when it builds no index of its own.
-                field = cast('models.Field[Any, Any]', model._meta.get_field('organization'))
+                field = model._meta.get_field('organization')
+                assert isinstance(field, models.Field)
                 *_, kwargs = field.deconstruct()
 
                 self.assertFalse(kwargs.get('db_index', True))

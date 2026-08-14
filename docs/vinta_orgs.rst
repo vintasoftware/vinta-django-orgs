@@ -7,7 +7,6 @@ Subpackages
 .. toctree::
    :maxdepth: 4
 
-   vinta_orgs.helpers
    vinta_orgs.management
 
 Submodules
@@ -157,10 +156,26 @@ vinta\_orgs.querysets module
    :show-inheritance:
    :undoc-members:
 
+vinta\_orgs.resolution module
+-----------------------------
+
+.. automodule:: vinta_orgs.resolution
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
 vinta\_orgs.serializers module
 ------------------------------
 
 .. automodule:: vinta_orgs.serializers
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+vinta\_orgs.services module
+---------------------------
+
+.. automodule:: vinta_orgs.services
    :members:
    :show-inheritance:
    :undoc-members:

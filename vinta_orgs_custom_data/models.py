@@ -20,7 +20,7 @@ from vinta_orgs_custom_data.mixins import OrganizationSpecificFieldsModelMixin, 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
 
-    from vinta_orgs.models import Organization, OrganizationMembership
+    from vinta_orgs.models import AbstractOrganization, AbstractOrganizationMembership
 
 
 class OrganizationSpecificTable(SingleOrganizationModelMixin):
@@ -97,7 +97,11 @@ class OrganizationSpecificTablesRelationship(SingleOrganizationModelMixin):
 # the membership model is swappable, so the sender is only known once the app
 # registry is populated.
 def create_organization_specific_tables_relationship(
-    sender: type[OrganizationMembership], instance: OrganizationMembership, created: bool, *args: Any, **kwargs: Any
+    sender: type[AbstractOrganizationMembership],
+    instance: AbstractOrganizationMembership,
+    created: bool,
+    *args: Any,
+    **kwargs: Any,
 ) -> None:
     if created:
         new_rel = OrganizationSpecificTablesRelationship.objects.create(
@@ -111,7 +115,7 @@ def create_organization_specific_tables_relationship(
 # Likewise connected from ``ready()`` -- the sender is the configured membership
 # model's ``groups`` through table.
 def add_group_organization_specific_tables_relationship(
-    sender: type[Any], instance: OrganizationMembership, action: str, *args: Any, **kwargs: Any
+    sender: type[Any], instance: AbstractOrganizationMembership, action: str, *args: Any, **kwargs: Any
 ) -> None:
     if action == 'post_add':
         rel, created = OrganizationSpecificTablesRelationship.objects.get_or_create(
@@ -128,7 +132,7 @@ class OrganizationSpecificFieldsValidator(MultipleOrganizationsModelMixin):
     # and so its related manager -- a type of its own. Annotated explicitly
     # because the target is a runtime call rather than a literal, so the type
     # checker cannot infer what it relates to.
-    organizations: models.ManyToManyField[Organization, Any] = models.ManyToManyField(
+    organizations: models.ManyToManyField[AbstractOrganization, Any] = models.ManyToManyField(
         organization_model_string(), related_name='validators_available'
     )
 

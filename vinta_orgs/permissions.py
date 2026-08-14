@@ -27,13 +27,13 @@ from rest_framework.permissions import BasePermission, DjangoModelPermissions
 from rest_framework.request import Request
 from rest_framework.views import APIView
 
-from vinta_orgs.state import get_current_organization
+from vinta_orgs.state import organization_state
 
 
 def _member_of_the_selected_organization(request: Request, **kwargs: Any) -> bool:
     """Whether the caller holds an active membership of the selected organization.
 
-    ``get_current_organization()`` first, and not merely as an optimization. A
+    ``organization_state.get()`` first, and not merely as an optimization. A
     permission check is one place where "no organization selected" has an
     obviously correct answer -- nobody may act in an organization nobody
     selected -- and ``STRICT_ORGANIZATION_FILTER`` would otherwise raise
@@ -46,7 +46,7 @@ def _member_of_the_selected_organization(request: Request, **kwargs: Any) -> boo
     so this only matters to a subclass that turns ``authenticated_users_only``
     off -- which used to get an ``AttributeError`` instead of a 403.
     """
-    if get_current_organization() is None:
+    if organization_state.get() is None:
         return False
 
     if not request.user.is_authenticated:

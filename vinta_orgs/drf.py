@@ -36,20 +36,22 @@ replaces its own for the duration of the view, restoring it on the way out.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
+from vinta_orgs._state import OrganizationToken
 from vinta_orgs.exceptions import AmbiguousOrganizationError, OrganizationAccessDeniedError
-from vinta_orgs.helpers.memberships import resolve_membership_for_user
+from vinta_orgs.resolution import OrganizationSelection
+from vinta_orgs.services import MembershipService
 from vinta_orgs.settings import get_setting
-from vinta_orgs.state import OrganizationToken, reset_current_organization, set_current_organization
+from vinta_orgs.state import organization_state
 
 if TYPE_CHECKING:
     from django.http import HttpResponse
     from rest_framework.request import Request
 
-    from vinta_orgs.models import Organization, OrganizationMembership
+    from vinta_orgs.models import AbstractOrganization, AbstractOrganizationMembership
 
 
 class OrganizationScopedAPIViewMixin:
@@ -96,7 +98,7 @@ class OrganizationScopedAPIViewMixin:
 
         return action is not None and action in self.organization_optional_actions
 
-    def get_organization_slug(self, request: Request) -> str | None:
+    def get_organization_slug(self, request: Request) -> OrganizationSelection:
         """What the caller named, if anything. Override to read it from elsewhere.
 
         Reads the ``ORGANIZATION_HTTP_HEADER`` header, so a project that
@@ -122,11 +124,12 @@ class OrganizationScopedAPIViewMixin:
         through to Django's own ``BadRequest`` handling and be answered with an
         HTML 400 in the middle of a JSON API.
         """
-        membership: OrganizationMembership | None
+        membership: AbstractOrganizationMembership | None
 
         try:
-            membership = resolve_membership_for_user(
-                cast('Any', getattr(request, 'user', None)),
+            service: MembershipService[AbstractOrganization, AbstractOrganizationMembership] = MembershipService()
+            membership = service.resolve_for_user(
+                getattr(request, 'user', None),
                 self.get_organization_slug(request),
                 strict=not self.is_organization_resolution_optional(),
             )
@@ -138,7 +141,7 @@ class OrganizationScopedAPIViewMixin:
         request.organization_membership = membership  # type: ignore[attr-defined]
         request.organization = membership.organization if membership is not None else None  # type: ignore[attr-defined]
 
-    def bind_organization(self, organization: Organization | None) -> None:
+    def bind_organization(self, organization: AbstractOrganization | None) -> None:
         """Bind ``organization`` -- possibly ``None`` -- for the rest of the request.
 
         ``None`` is bound rather than skipped. A caller who resolved to no
@@ -152,7 +155,7 @@ class OrganizationScopedAPIViewMixin:
         ``dispatch``'s ``finally`` restoring only the second of two.
         """
         self.unbind_organization()
-        self._organization_token = set_current_organization(organization)
+        self._organization_token = organization_state.set(organization)
 
     def unbind_organization(self) -> None:
         """Release this view's binding, restoring whatever preceded it.
@@ -169,7 +172,7 @@ class OrganizationScopedAPIViewMixin:
         # different context than the one that created it -- cannot leave a stale
         # token behind for a second, wrong reset.
         self._organization_token = None
-        reset_current_organization(token)
+        organization_state.reset(token)
 
     def perform_authentication(self, request: Request) -> None:
         """Authenticate, then resolve and bind the organization.

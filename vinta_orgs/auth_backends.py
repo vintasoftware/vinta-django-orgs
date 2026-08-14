@@ -9,12 +9,12 @@ from django.contrib.auth.models import Permission
 from django.db.models import Q, QuerySet
 
 from vinta_orgs.conf import get_organization_membership_model
-from vinta_orgs.helpers.organizations import get_current_organization
+from vinta_orgs.state import organization_state
 
 if TYPE_CHECKING:
     from django.db.models import Model
 
-    from vinta_orgs.models import Organization, OrganizationMembership
+    from vinta_orgs.models import AbstractOrganization, AbstractOrganizationMembership
 
 
 class AnyUser(Protocol):
@@ -60,15 +60,15 @@ class OrganizationModelBackend(ModelBackend):
         user_groups_query = 'group__%s' % user_groups_field.related_query_name()
         return Permission.objects.filter(**{user_groups_query: user_obj})
 
-    def _get_user_organization_permissions(self, membership: OrganizationMembership) -> QuerySet[Permission]:
+    def _get_user_organization_permissions(self, membership: AbstractOrganizationMembership) -> QuerySet[Permission]:
         return membership.permissions.all()
 
-    def _get_group_organization_permissions(self, membership: OrganizationMembership) -> QuerySet[Permission]:
+    def _get_group_organization_permissions(self, membership: AbstractOrganizationMembership) -> QuerySet[Permission]:
         membership_groups_field = membership._meta.get_field('groups')
         membership_groups_query = 'group__%s' % membership_groups_field.related_query_name()
         return Permission.objects.filter(**{membership_groups_query: membership})
 
-    def _get_user_permissions(self, membership: OrganizationMembership) -> QuerySet[Permission]:
+    def _get_user_permissions(self, membership: AbstractOrganizationMembership) -> QuerySet[Permission]:
         membership_permissions_field = membership._meta.get_field('permissions')
         membership_permission_query = membership_permissions_field.related_query_name()
 
@@ -83,7 +83,7 @@ class OrganizationModelBackend(ModelBackend):
             | Q(**{user_groups_query: membership.user})
         ).distinct()
 
-    def _get_group_permissions(self, membership: OrganizationMembership) -> QuerySet[Permission]:
+    def _get_group_permissions(self, membership: AbstractOrganizationMembership) -> QuerySet[Permission]:
         membership_groups_field = membership._meta.get_field('groups')
         membership_groups_query = 'group__%s' % membership_groups_field.related_query_name()
         user_groups_field = get_user_model()._meta.get_field('groups')
@@ -108,7 +108,9 @@ class OrganizationModelBackend(ModelBackend):
 
         return cache
 
-    def _get_membership(self, user_obj: AnyUser, organization: Organization) -> OrganizationMembership | None:
+    def _get_membership(
+        self, user_obj: AnyUser, organization: AbstractOrganization
+    ) -> AbstractOrganizationMembership | None:
         """Return this user's *active* membership in ``organization``, at most one query per organization.
 
         ``_get_organization_permissions`` is called once for ``user`` and once
@@ -131,7 +133,7 @@ class OrganizationModelBackend(ModelBackend):
                 .first()
             )
 
-        membership: OrganizationMembership | None = cache[organization.pk]
+        membership: AbstractOrganizationMembership | None = cache[organization.pk]
         return membership
 
     @staticmethod
@@ -146,7 +148,7 @@ class OrganizationModelBackend(ModelBackend):
         if not user_obj.is_active or user_obj.is_anonymous or obj is not None:
             return set()
 
-        organization = get_current_organization()
+        organization = organization_state.get()
         if not organization:
             return set()
 
@@ -232,7 +234,7 @@ class OrganizationModelBackend(ModelBackend):
         if not user_obj.is_active or user_obj.is_anonymous or obj is not None:
             return set()
 
-        organization = get_current_organization()
+        organization = organization_state.get()
         if not organization:
             return set()
 
@@ -251,7 +253,7 @@ class OrganizationModelBackend(ModelBackend):
             self.get_all_organization_permissions(user_obj, obj)
         )
 
-    def _get_membership_permissions(self, user_obj: AnyUser, organization: Organization) -> set[str]:
+    def _get_membership_permissions(self, user_obj: AnyUser, organization: AbstractOrganization) -> set[str]:
         """The permissions ``user_obj`` holds through an active membership in ``organization``.
 
         The union of the membership's own ``permissions`` grant with the
@@ -278,7 +280,7 @@ class OrganizationModelBackend(ModelBackend):
     def get_organization_permissions(
         self,
         user_obj: AnyUser,
-        organization: Organization | None,
+        organization: AbstractOrganization | None,
         *,
         include_global: bool = False,
         allow_superuser: bool = False,

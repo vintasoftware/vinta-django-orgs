@@ -8,10 +8,17 @@ class OrganizationNotFoundError(Exception):
         super().__init__(message)
 
 
+class OrganizationCannotBeUpdatedError(Exception):
+    """A write tried to move an existing row to another organization."""
+
+    def __init__(self, message: str = '`organization` cannot be updated.') -> None:
+        super().__init__(message)
+
+
 class AmbiguousOrganizationError(BadRequest):
     """The caller belongs to several organizations and named none of them.
 
-    Raised by :func:`vinta_orgs.helpers.memberships.resolve_organization_for_user`
+    Raised by :meth:`vinta_orgs.services.MembershipService.resolve_organization_for_user`
     and by the retrievers built on it. Picking one of them -- the oldest
     membership, say -- is the failure this exists to prevent: the request then
     reads and writes an organization the caller never asked for, and which one

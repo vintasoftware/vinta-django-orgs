@@ -10,11 +10,11 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import BaseSerializer
 
-from vinta_orgs.conf import get_organization_model
-from vinta_orgs.helpers.organizations import get_current_organization
-from vinta_orgs.models import Organization, OrganizationSite
+from vinta_orgs.conf import get_organization_membership_model, get_organization_model
+from vinta_orgs.models import AbstractOrganization, OrganizationSite
 from vinta_orgs.permissions import DjangoOrganizationModelPermissions
 from vinta_orgs.settings import get_setting
+from vinta_orgs.state import organization_state
 from vinta_orgs.utils import import_from_string
 
 if TYPE_CHECKING:
@@ -34,14 +34,22 @@ class OrganizationListView(generics.ListCreateAPIView):
     def get_serializer_class(self) -> type[BaseSerializer[Any]]:
         return import_from_string(get_setting('ORGANIZATION_SERIALIZER'))
 
-    def get_queryset(self) -> QuerySet[Organization]:
+    def get_queryset(self) -> QuerySet[AbstractOrganization]:
         organizations = get_organization_model()._default_manager
 
         if self.request.user.is_authenticated:
             # ``is_active`` as well as the user: a deactivated membership is
             # kept for the audit trail and grants nothing, so the organization
             # it points at is not one this caller may still select.
-            return organizations.filter(memberships__user=self.request.user, memberships__is_active=True).distinct()
+            organization_ids = (
+                get_organization_membership_model()
+                ._default_manager.filter(
+                    user_id=self.request.user.pk,
+                    is_active=True,
+                )
+                .values('organization_id')
+            )
+            return organizations.filter(pk__in=organization_ids)
         else:
             return organizations.none()
 
@@ -52,21 +60,29 @@ class OrganizationDetailsView(generics.RetrieveUpdateDestroyAPIView):
     def get_serializer_class(self) -> type[BaseSerializer[Any]]:
         return import_from_string(get_setting('ORGANIZATION_SERIALIZER'))
 
-    def get_queryset(self) -> QuerySet[Organization]:
+    def get_queryset(self) -> QuerySet[AbstractOrganization]:
         organizations = get_organization_model()._default_manager
 
         if self.request.user.is_authenticated:
             # ``is_active`` as well as the user: a deactivated membership is
             # kept for the audit trail and grants nothing, so the organization
             # it points at is not one this caller may still select.
-            return organizations.filter(memberships__user=self.request.user, memberships__is_active=True).distinct()
+            organization_ids = (
+                get_organization_membership_model()
+                ._default_manager.filter(
+                    user_id=self.request.user.pk,
+                    is_active=True,
+                )
+                .values('organization_id')
+            )
+            return organizations.filter(pk__in=organization_ids)
         else:
             return organizations.none()
 
-    def get_object(self) -> Organization:
+    def get_object(self) -> AbstractOrganization:
         # The organization the request is already bound to, so the detail route
         # needs no primary key of its own.
-        organization = get_current_organization()
+        organization = organization_state.get()
         assert organization is not None
         return organization
 
@@ -85,7 +101,7 @@ class OrganizationSiteListView(generics.ListCreateAPIView):
     def get_serializer(self, *args: Any, **kwargs: Any) -> BaseSerializer[Any]:
         if self.request.method == 'POST':
             data = kwargs.get('data', {})
-            data['organization'] = get_current_organization()
+            data['organization'] = organization_state.get()
             kwargs['data'] = data
         return super().get_serializer(*args, **kwargs)
 

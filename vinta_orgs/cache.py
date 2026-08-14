@@ -22,7 +22,7 @@ longer matches the table.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final, Literal, TypeAlias
 
 from django.core.cache import caches
 from django.db.models.signals import post_delete, post_save
@@ -34,11 +34,12 @@ from vinta_orgs.settings import get_setting
 if TYPE_CHECKING:
     from django.core.cache.backends.base import BaseCache
 
-    from vinta_orgs.models import Organization
+    from vinta_orgs.models import AbstractOrganization
 
 #: Cached in place of an organization when a site maps to none, so an unmapped
 #: domain does not re-query on every request either.
-NO_ORGANIZATION = '__none__'
+NoOrganization: TypeAlias = Literal['__none__']
+NO_ORGANIZATION: Final[NoOrganization] = '__none__'
 
 KEY_PREFIX = 'shared-schema-organizations:site'
 
@@ -55,11 +56,11 @@ def cache_key(site_id: Any) -> str:
     return '%s:%s' % (KEY_PREFIX, site_id)
 
 
-def _dump(organization: Organization) -> dict[str, Any]:
+def _dump(organization: AbstractOrganization) -> dict[str, Any]:
     return {field.attname: getattr(organization, field.attname) for field in organization._meta.concrete_fields}
 
 
-def _load(values: dict[str, Any]) -> Organization | None:
+def _load(values: dict[str, Any]) -> AbstractOrganization | None:
     from vinta_orgs.conf import get_organization_model
 
     organization_model = get_organization_model()
@@ -77,7 +78,7 @@ def _load(values: dict[str, Any]) -> Organization | None:
     return organization
 
 
-def get_cached_organization_for_site(site_id: Any) -> Organization | None | str:
+def get_cached_organization_for_site(site_id: Any) -> AbstractOrganization | None | NoOrganization:
     """Return the cached organization, ``NO_ORGANIZATION``, or ``None`` for a miss."""
     if not is_enabled():
         return None
@@ -90,7 +91,7 @@ def get_cached_organization_for_site(site_id: Any) -> Organization | None | str:
     return _load(cached)
 
 
-def set_cached_organization_for_site(site_id: Any, organization: Organization | None) -> None:
+def set_cached_organization_for_site(site_id: Any, organization: AbstractOrganization | None) -> None:
     if not is_enabled():
         return
 

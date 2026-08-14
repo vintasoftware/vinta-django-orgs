@@ -13,8 +13,12 @@ from django.test import TestCase
 
 from vinta_orgs.authorization import get_organization_permissions
 from vinta_orgs.conf import get_organization_membership_model, get_organization_model
-from vinta_orgs.helpers.memberships import create_membership, get_active_memberships
-from vinta_orgs.helpers.organizations import clear_current_organization, set_current_organization
+from vinta_orgs.tests.factories import (
+    clear_current_organization,
+    create_membership,
+    get_active_memberships,
+    set_current_organization,
+)
 
 if TYPE_CHECKING:
     from vinta_orgs.models import Organization, OrganizationMembership

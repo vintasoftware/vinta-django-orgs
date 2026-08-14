@@ -6,19 +6,23 @@ a data migration wrote. This is the test that a seeded group survives that --
 and the one that fails if the seeder ever stops being idempotent.
 """
 
+from typing import TYPE_CHECKING
+
 from django.contrib.auth.models import Group, User
 from django.test import TestCase, TransactionTestCase, override_settings
 
 from vinta_orgs.conf import get_organization_model
-from vinta_orgs.helpers.memberships import create_membership
-from vinta_orgs.helpers.organizations import clear_current_organization, set_current_organization
 from vinta_orgs.testing import (
     SeededOrganizationGroupsMixin,
     organization_group_seeders,
     reseed_organization_groups,
 )
+from vinta_orgs.tests.factories import clear_current_organization, create_membership, set_current_organization
 
-Organization = get_organization_model()
+if TYPE_CHECKING:
+    from vinta_orgs.models import Organization
+else:
+    Organization = get_organization_model()
 
 _seeder_calls: list[str] = []
 
@@ -80,7 +84,7 @@ class ReseedTests(TestCase):
     @override_settings(
         SHARED_SCHEMA_ORGANIZATIONS={
             'ORGANIZATION_GROUP_SEEDERS': [
-                'vinta_orgs.helpers.organizations.create_default_organization_groups',
+                'vinta_orgs.tests.factories.create_default_organization_groups',
                 'vinta_orgs.tests.test_testing.extra_seeder',
             ]
         }
