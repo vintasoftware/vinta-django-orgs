@@ -7,7 +7,7 @@ case yes" -- and the two agree often enough that reaching for ``has_perm`` looks
 right until it is not. Three ways it is not:
 
 *The organization is ambient.* ``ModelBackend`` resolves organization
-permissions from :func:`vinta_orgs.state.get_current_organization`, so it can
+permissions from :meth:`vinta_orgs.state.OrganizationState.get`, so it can
 only answer about the bound one. A permission class asking about an *ancestor*
 organization (reseller billing), and a DRF view that binds nothing at all
 because it never went through the middleware, both get an answer to a question
@@ -48,7 +48,7 @@ from django.utils.functional import LazyObject
 from vinta_orgs.conf import get_organization_membership_model, get_organization_model
 from vinta_orgs.models import AbstractOrganization
 from vinta_orgs.querysets import filter_memberships_holding_permission
-from vinta_orgs.state import get_current_organization, organization_context
+from vinta_orgs.state import organization_state
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -119,7 +119,7 @@ def get_organization_permissions(
     if organization_pk is None:
         return set()
 
-    current = get_current_organization()
+    current = organization_state.get()
 
     # ``getattr`` rather than ``current.pk``: the bound value may be a
     # ``SimpleLazyObject`` standing in for an organization that does not exist,
@@ -133,7 +133,7 @@ def get_organization_permissions(
     if target is None:
         return set()
 
-    with organization_context(target):
+    with organization_state.context(target):
         return _resolve(user, target, include_global=include_global, allow_superuser=allow_superuser)
 
 

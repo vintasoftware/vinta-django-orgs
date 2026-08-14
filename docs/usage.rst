@@ -135,7 +135,7 @@ Both settings are ordinary top-level Django settings rather than keys inside
 machinery reads them with a plain ``getattr(settings, ...)``. Both default to the
 models in this app, so a project that does not need this never mentions them.
 
-Reach for the configured model through the helpers, never by importing
+Reach for the configured model through the configuration API, never by importing
 ``Organization``:
 
 .. code:: python
@@ -155,9 +155,25 @@ when application code needs fields from its swapped models:
     from myapp.models import Organization as MyOrganization
     from myapp.models import OrganizationMembership as MyOrganizationMembership
     from vinta_orgs.services import MembershipService, OrganizationService
+    from vinta_orgs.state import OrganizationState
 
-    organizations = OrganizationService(MyOrganization)
-    memberships = MembershipService(organizations, MyOrganizationMembership)
+    class ProjectOrganizationService(OrganizationService[MyOrganization]):
+        model_class = MyOrganization
+
+
+    class ProjectMembershipService(
+        MembershipService[MyOrganization, MyOrganizationMembership]
+    ):
+        model_class = MyOrganizationMembership
+
+
+    class ProjectOrganizationState(OrganizationState[MyOrganization]):
+        model_class = MyOrganization
+
+
+    organizations = ProjectOrganizationService()
+    memberships = ProjectMembershipService()
+    organization_state = ProjectOrganizationState()
 
 Every other module imports those service instances rather than either model:
 
@@ -174,13 +190,18 @@ Every other module imports those service instances rather than either model:
     membership = memberships.create(organization, request.user)
     membership.notes = 'Created through onboarding'
 
-``OrganizationService`` needs only the organization type.
-``MembershipService`` infers both types from the organization service and the
-membership model passed to it, then checks that the configured membership
-relation targets that organization model. The module-level helpers remain
-available for lower-level code; their explicit ``organization_model=`` and
-``membership_model=`` witnesses provide the same concrete return types one call
-at a time.
+``OrganizationService`` and ``OrganizationState`` preserve the organization
+type declared by their subclasses. ``MembershipService`` preserves both types
+and derives the runtime organization model from ``model_class``'s
+``organization`` foreign key; it does not need an organization service passed
+to it. Every declaration is checked against Django's configured models when
+instantiated.
+
+When the swappable settings keep their defaults, the base class
+``model_class`` attributes already point to ``vinta_orgs.Organization`` and
+``vinta_orgs.OrganizationMembership``. A project can still subclass to give
+the services project-specific names and concrete generic parameters without
+redeclaring those attributes.
 
 For a foreign key of your own, point at the setting so it follows the swap:
 
@@ -274,7 +295,7 @@ the ones that run before anything has been selected:
     user.memberships.select_related('organization')
 
     # Provisioning, immediately after signup
-    create_membership(organization, user)
+    memberships.create(organization, user)
 
     # Is this invitation's user already a member?
     OrganizationMembership.objects.filter(user=user, organization=organization).exists()
@@ -319,7 +340,7 @@ An inactive membership grants nothing and selects nothing. Specifically:
   every DRF permission class built on it refuse -- a deactivated administrator
   is exactly as powerful as a non-member;
 * the retrievers will not select its organization for that user;
-* ``resolve_membership_for_user`` treats it as absent, so it does not make a
+* ``MembershipService.resolve_for_user()`` treats it as absent, so it does not make a
   single-organization caller look ambiguous;
 * the permission classes and the organization list endpoint shipped here skip
   it.
@@ -645,7 +666,7 @@ with ``OrganizationAccessDeniedError`` (a ``PermissionDenied``, so a 403), and
 so is one whose membership has been deactivated. A slug matching no
 organization at all still raises ``OrganizationNotFoundError``, as it always
 has -- so this retriever does distinguish "not yours" from "no such thing". Use
-``resolve_membership_for_user`` (below) where that distinction must not be
+``MembershipService.resolve_for_user()`` (below) where that distinction must not be
 observable.
 
 The header is set by whoever is making the request. Without that check, any
@@ -687,9 +708,8 @@ and writes an organization the caller never named, chosen by row creation order:
 a user who administers an old organization A and is a plain member of B would
 pass an administrator gate for a request that then serves B.
 
-The whole table lives in
-``vinta_orgs.helpers.memberships.resolve_membership_for_user``, which you can
-call directly:
+The whole table lives in ``MembershipService.resolve_for_user()``, called on
+the project's typed membership service:
 
 ==================  ==============================  =====================================
 Active memberships  slug named by the caller         Result
@@ -709,16 +729,17 @@ reach for.
 
 Resolvers are not required to use slugs. If application policy names an
 organization by an integer ID, UUID or external key, translate it to the
-organization's slug before calling the helper. When an identifier was supplied
+organization's slug before calling the service. When an identifier was supplied
 but matched no row, pass the public sentinel rather than ``None``:
 
 .. code:: python
 
-    from vinta_orgs.helpers.memberships import UNRESOLVED_ORGANIZATION
+    from myapp.organization_services import memberships
+    from vinta_orgs.resolution import UNRESOLVED_ORGANIZATION
 
     organization = Organization.objects.filter(pk=request.headers['X-Organization-Id']).first()
     selection = organization.slug if organization else UNRESOLVED_ORGANIZATION
-    membership = resolve_membership_for_user(request.user, selection)
+    membership = memberships.resolve_for_user(request.user, selection)
 
 ``None`` means no selection and may legitimately choose a caller's sole
 membership. ``UNRESOLVED_ORGANIZATION`` means a selection was attempted and is
@@ -782,37 +803,38 @@ Forcing organization selection
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Outside the request/response cycle -- Celery tasks, management commands, tests
--- select the organization with ``organization_context``. It accepts a slug or
-an ``Organization``, works as a context manager or as a decorator, and restores
-whatever was selected before when it exits (including when the block raises):
+-- select the organization with the typed state object configured above. Its
+``context()`` method accepts a slug or an ``Organization``, works as a context
+manager or as a decorator, and restores whatever was selected before when it
+exits (including when the block raises):
 
 .. code:: python
 
-    from vinta_orgs.helpers import organization_context
+    from myapp.organization_services import organization_state
 
     from .models import MyModel
 
     def my_function():
-        with organization_context('default'):
+        with organization_state.context('default'):
             return list(MyModel.objects.all())  # only organization__slug='default'
 
 
-    @organization_context('default')
+    @organization_state.context('default')
     def my_task():
         return MyModel.objects.count()
 
-``set_current_organization`` selects an organization without a scope, and
-``clear_current_organization`` unselects it. Prefer ``organization_context``:
-a bare ``set_current_organization`` stays in effect for the rest of the thread
-(or async task), which is rarely what a helper function wants.
+``organization_state.set()`` selects an organization without a scope, and
+``organization_state.clear()`` unselects it. Prefer ``context()``: a bare
+``set()`` stays in effect for the rest of the thread (or async task), which is
+rarely what a caller wants.
 
 .. code:: python
 
-    from vinta_orgs.helpers import clear_current_organization, set_current_organization
+    from myapp.organization_services import organization_state
 
-    set_current_organization('default')
+    organization_state.set('default')
     # ...
-    clear_current_organization()
+    organization_state.clear()
 
 The selection is stored in a ``contextvars.ContextVar``, so it is isolated per
 thread and per async task, and the middleware restores the previous value when
@@ -836,21 +858,21 @@ You can access the current organization from the request.
         # ...
 
 
-From ``get_current_organization`` helper
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+From the typed organization state
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code:: python
 
-    from myapp.models import Organization
-    from vinta_orgs.helpers import get_current_organization
+    from myapp.organization_services import organization_state
 
     def my_view(request):
-        current_organization = get_current_organization(Organization)
+        current_organization = organization_state.get()
         # ...
 
-Passing the model is optional. Without it the return type is the abstract
-organization contract; with it, the package checks the runtime value and the
-return type is ``Organization | None``.
+The state subclass's generic parameter makes the return type
+``MyOrganization | None``. The same applies inside a slug-based
+``organization_state.context('acme')`` block; no model witness is needed at the
+call site.
 
 
 The models that inherit from ``SingleOrganizationModelMixin`` or
@@ -917,7 +939,7 @@ data migration calls* rather than copying their contents:
 
     SHARED_SCHEMA_ORGANIZATIONS = {
         'ORGANIZATION_GROUP_SEEDERS': [
-            'vinta_orgs.helpers.organizations.create_default_organization_groups',
+            'vinta_orgs.seeding.create_default_organization_groups',
             'myproject.organizations.groups.create_role_groups',
         ],
     }
@@ -1068,7 +1090,7 @@ Import paths of the callables that build your seeded organization groups. Read
 only by ``vinta_orgs.testing`` -- see `Seeded groups and transactional tests`_.
 
 default value: ``[]``, meaning
-``['vinta_orgs.helpers.organizations.create_default_organization_groups']``
+``['vinta_orgs.seeding.create_default_organization_groups']``
 
 
 AUTO_DEFER_SAFE_JOINS

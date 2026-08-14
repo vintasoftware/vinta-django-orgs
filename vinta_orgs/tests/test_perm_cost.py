@@ -6,7 +6,7 @@ cache miss -- and both cost a query on every check rather than once.
 """
 
 from tests.utils import OrganizationsTestCase
-from vinta_orgs.helpers.organizations import create_organization, set_current_organization
+from vinta_orgs.tests.factories import create_organization, set_current_organization
 
 
 class PermissionQueryCountTests(OrganizationsTestCase):

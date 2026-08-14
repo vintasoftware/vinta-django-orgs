@@ -6,10 +6,9 @@ from django.contrib.sites.models import Site
 from django.core.cache import cache
 from django.test import RequestFactory, TestCase, override_settings
 
-from vinta_orgs.helpers.organizations import clear_current_organization
 from vinta_orgs.models import AbstractOrganization, OrganizationSite
 from vinta_orgs.organization_retrievers import retrieve_by_domain
-from vinta_orgs.tests.factories import create_organization
+from vinta_orgs.tests.factories import clear_current_organization, create_organization
 
 CACHING = {'CACHE_ORGANIZATION_RETRIEVAL': True}
 

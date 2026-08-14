@@ -4,7 +4,8 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils.text import slugify
 
-from vinta_orgs.helpers.organizations import create_organization
+from vinta_orgs.models import AbstractOrganization
+from vinta_orgs.services import OrganizationService
 
 
 class Command(BaseCommand):
@@ -22,6 +23,7 @@ class Command(BaseCommand):
             domain = 'localhost:8000'
 
         with transaction.atomic():
-            create_organization(name, slug, [domain])
+            service: OrganizationService[AbstractOrganization] = OrganizationService()
+            service.create(name, slug, [domain])
 
             self.stdout.write(self.style.SUCCESS('Successfully created Organization %s' % name))

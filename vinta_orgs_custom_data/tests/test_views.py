@@ -8,7 +8,7 @@ from model_bakery import baker
 
 from exampleproject.lectures.models import Lecture
 from tests.utils import OrganizationsAPITestCase
-from vinta_orgs.helpers.organizations import set_current_organization
+from vinta_orgs.state import organization_state
 from vinta_orgs_custom_data.helpers.custom_tables_helpers import (
     _get_pivot_table_class_for_data_type,
     get_custom_table_manager,
@@ -131,7 +131,7 @@ class CustomTablesListTests(OrganizationsAPITestCase):
             self.view_url, self.params, format='json', HTTP_ORGANIZATION_SLUG=self.organization.slug
         )
         self.assertEqual(response.status_code, 201)
-        set_current_organization(self.organization.slug)
+        organization_state.set(self.organization.slug)
         tables = OrganizationSpecificTable.objects.all()
         self.assertEqual(tables.count(), 11)
         new_table = tables.get(name=response.data['name'].split('__')[1])
@@ -230,7 +230,7 @@ class CustomTablesDetailsTests(OrganizationsAPITestCase):
             self.custom_table_view_url, params, format='json', HTTP_ORGANIZATION_SLUG=self.organization.slug
         )
 
-        set_current_organization(self.organization.slug)
+        organization_state.set(self.organization.slug)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['fields_definitions']), 3)
@@ -333,7 +333,7 @@ class OrganizationSpecificTableRowViewsetTests(OrganizationsAPITestCase):
         )
 
         self.assertEqual(response.status_code, 201)
-        set_current_organization(self.organization.slug)
+        organization_state.set(self.organization.slug)
         self.assertEqual(get_custom_table_manager(self.table.name).all().count(), 2)
 
     def test_create_invalid(self) -> None:
@@ -368,7 +368,7 @@ class OrganizationSpecificTableRowViewsetTests(OrganizationsAPITestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        set_current_organization(self.organization.slug)
+        organization_state.set(self.organization.slug)
         for key, value in params.items():
             self.assertEqual(getattr(get_custom_table_manager(self.table.name).get(id=self.row.id), key), value)
 
@@ -430,7 +430,7 @@ class LecturesViewSetTests(OrganizationsAPITestCase):
 
         self.assertEqual(response.status_code, 201)
 
-        set_current_organization(self.organization.slug)
+        organization_state.set(self.organization.slug)
         new_lecture = Lecture.objects.get(id=response.data['id'])
         for key, value in self.params.items():
             if key != 'speaker':
@@ -453,7 +453,7 @@ class LecturesViewSetTests(OrganizationsAPITestCase):
 
         self.assertEqual(response.status_code, 200)
 
-        set_current_organization(self.organization.slug)
+        organization_state.set(self.organization.slug)
         updated_lecture = Lecture.objects.get(id=response.data['id'])
         for key, value in self.params.items():
             if key != 'speaker':

@@ -40,17 +40,17 @@ Added
 * ``UNRESOLVED_ORGANIZATION`` lets a resolver for a non-slug identifier preserve
   the difference between "no identifier supplied" and "identifier supplied but
   not found" without inventing a sentinel slug.
-* Public organization and membership APIs use the abstract, swappable-model
-  contracts as their fallback without erasing concrete types. Helpers preserve
-  concrete instance inputs, and settings-driven helpers accept a checked model
-  class when callers want a concrete return type. ``OrganizationRequest`` and
-  ``organization_context`` are generic for the same reason. Organization-safe
-  relation declarations now type as Django fields, allowing django-stubs to
-  infer their related model.
-* ``OrganizationService`` and ``MembershipService`` let an application bind
-  its concrete swapped models once and import typed service instances
-  everywhere else, instead of importing model classes or repeating type
-  witnesses at every helper call.
+* Organization and membership operations are centralized in generic
+  ``OrganizationService`` and ``MembershipService`` classes. Applications bind
+  their swapped models once through declarative ``model_class`` subclasses;
+  the old function-based helper façade was removed.
+* ``MembershipService`` derives the organization model from its membership
+  model's foreign key and therefore needs no organization-service constructor
+  parameter. ``OrganizationState`` uses the same specialization pattern for
+  typed ``get()``, ``set()`` and ``context()`` operations.
+* ``OrganizationRequest`` remains generic, and organization-safe relation
+  declarations now type as Django fields, allowing django-stubs to infer their
+  related model.
 
 0.3.0 (2026-08-13)
 ++++++++++++++++++
@@ -140,8 +140,8 @@ Added
   resolved there at all. Binds for the request and releases in a ``finally``
   around ``dispatch``.
 
-* ``vinta_orgs.helpers.memberships.resolve_membership_for_user`` and its
-  organization-shaped sibling: the full resolution table (0 / 1 / 2+ active
+* ``vinta_orgs.services.MembershipService.resolve_for_user`` and its
+  organization-shaped method: the full resolution table (0 / 1 / 2+ active
   memberships against a named / absent / non-member organization), with
   ``AmbiguousOrganizationError`` for a multi-organization caller who named none
   -- a 400 rather than a silent pick by row creation order -- and

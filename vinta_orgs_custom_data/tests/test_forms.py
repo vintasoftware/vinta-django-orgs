@@ -6,7 +6,7 @@ from model_bakery import baker
 from exampleproject.lectures.forms import LectureForm
 from exampleproject.lectures.models import Lecture
 from tests.utils import OrganizationsAPITestCase
-from vinta_orgs.helpers.organizations import set_current_organization
+from vinta_orgs.state import organization_state
 from vinta_orgs_custom_data.forms import get_organization_specific_table_row_form_class
 from vinta_orgs_custom_data.helpers.custom_tables_helpers import (
     _get_pivot_table_class_for_data_type,
@@ -46,7 +46,7 @@ class OrganizationSpecificTableRowFormTests(OrganizationsAPITestCase):
             PivotTableClass.objects.filter(row_id=self.row.id, definition=field).update(value=i + 5)
 
         self.params = {field.name: i + 1000 for i, field in enumerate(self.fields)}
-        set_current_organization(self.organization.slug)
+        organization_state.set(self.organization.slug)
 
     def test_create(self) -> None:
         form = get_organization_specific_table_row_form_class(self.table.name)(data=self.params)
@@ -104,7 +104,7 @@ class LectureFormTests(OrganizationsAPITestCase):
             'speaker': self.user.id,
         }
         self.params.update({field.name: i + 1000 for i, field in enumerate(self.lecture_fields)})
-        set_current_organization(self.organization.slug)
+        organization_state.set(self.organization.slug)
 
     def test_create(self) -> None:
         form = LectureForm(data=self.params)

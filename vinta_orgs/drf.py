@@ -40,10 +40,12 @@ from typing import TYPE_CHECKING, Any
 
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
+from vinta_orgs._state import OrganizationToken
 from vinta_orgs.exceptions import AmbiguousOrganizationError, OrganizationAccessDeniedError
-from vinta_orgs.helpers.memberships import OrganizationSelection, resolve_membership_for_user
+from vinta_orgs.resolution import OrganizationSelection
+from vinta_orgs.services import MembershipService
 from vinta_orgs.settings import get_setting
-from vinta_orgs.state import OrganizationToken, reset_current_organization, set_current_organization
+from vinta_orgs.state import organization_state
 
 if TYPE_CHECKING:
     from django.http import HttpResponse
@@ -125,7 +127,8 @@ class OrganizationScopedAPIViewMixin:
         membership: AbstractOrganizationMembership | None
 
         try:
-            membership = resolve_membership_for_user(
+            service: MembershipService[AbstractOrganization, AbstractOrganizationMembership] = MembershipService()
+            membership = service.resolve_for_user(
                 getattr(request, 'user', None),
                 self.get_organization_slug(request),
                 strict=not self.is_organization_resolution_optional(),
@@ -152,7 +155,7 @@ class OrganizationScopedAPIViewMixin:
         ``dispatch``'s ``finally`` restoring only the second of two.
         """
         self.unbind_organization()
-        self._organization_token = set_current_organization(organization)
+        self._organization_token = organization_state.set(organization)
 
     def unbind_organization(self) -> None:
         """Release this view's binding, restoring whatever preceded it.
@@ -169,7 +172,7 @@ class OrganizationScopedAPIViewMixin:
         # different context than the one that created it -- cannot leave a stale
         # token behind for a second, wrong reset.
         self._organization_token = None
-        reset_current_organization(token)
+        organization_state.reset(token)
 
     def perform_authentication(self, request: Request) -> None:
         """Authenticate, then resolve and bind the organization.

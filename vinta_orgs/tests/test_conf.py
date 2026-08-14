@@ -23,7 +23,6 @@ from vinta_orgs.conf import (
     organization_membership_model_string,
     organization_model_string,
 )
-from vinta_orgs.helpers.organizations import organization_context
 from vinta_orgs.models import (
     AbstractOrganization,
     AbstractOrganizationMembership,
@@ -32,6 +31,7 @@ from vinta_orgs.models import (
     OrganizationSite,
 )
 from vinta_orgs.settings import get_setting
+from vinta_orgs.tests.factories import organization_context
 
 
 class ModelResolutionTests(TestCase):

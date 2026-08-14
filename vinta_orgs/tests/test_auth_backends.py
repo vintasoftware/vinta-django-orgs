@@ -7,10 +7,10 @@ from django.test import TestCase
 
 from vinta_orgs.auth_backends import OrganizationModelBackend
 from vinta_orgs.conf import get_organization_membership_model, get_organization_model
-from vinta_orgs.helpers.memberships import create_membership
-from vinta_orgs.helpers.organizations import (
+from vinta_orgs.tests.factories import (
     clear_current_organization,
     create_default_organization_groups,
+    create_membership,
     set_current_organization,
 )
 

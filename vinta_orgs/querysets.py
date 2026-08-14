@@ -26,6 +26,7 @@ from django.db.models import Exists, OuterRef, Q, QuerySet, Subquery
 from django.db.models.constants import LOOKUP_SEP
 
 from vinta_orgs._organization_updates import allow_organization_update, organization_update_is_allowed
+from vinta_orgs._state import get_bound_organization
 from vinta_orgs.exceptions import OrganizationCannotBeUpdatedError, OrganizationNotFoundError
 from vinta_orgs.fields import (
     expand_safe_relation_field_names,
@@ -33,7 +34,6 @@ from vinta_orgs.fields import (
     rewrite_safe_relation_kwargs,
 )
 from vinta_orgs.settings import get_setting
-from vinta_orgs.state import get_current_organization
 
 if TYPE_CHECKING:
     from django.db.backends.base.base import BaseDatabaseWrapper
@@ -113,13 +113,13 @@ def scope_queryset_to_current_organization(
     "no data yet", and does nothing about the ``get_or_create`` that looks a row
     up across every tenant before writing to it.
     """
-    organization = get_current_organization()
+    organization = get_bound_organization()
 
     if not organization:
         if get_setting('STRICT_ORGANIZATION_FILTER'):
             raise OrganizationNotFoundError(
                 'No organization is bound to the current context, so %s cannot be '
-                'queried. Bind one with `organization_context(...)`, scope the query '
+                'queried. Bind one with `organization_state.context(...)`, scope the query '
                 'explicitly with `filter_by_organization(...)`, or read every '
                 'organization through `original_manager`.' % queryset.model.__name__
             )
@@ -600,7 +600,7 @@ class OrganizationMembershipQuerySet(SingleOrganizationQuerySet):
         """``user``'s active memberships, oldest first, with the organization fetched.
 
         The organization switcher's query, and the one
-        :func:`vinta_orgs.helpers.memberships.resolve_organization_for_user`
+        :meth:`vinta_orgs.services.MembershipService.resolve_organization_for_user`
         reads. Ordered so that "the caller's only organization" is a stable
         answer rather than whatever the database returned first, and
         ``select_related`` because every caller goes on to read

@@ -7,8 +7,9 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from vinta_orgs.conf import get_organization_model
-from vinta_orgs.helpers.organizations import create_organization, get_current_organization, update_organization
 from vinta_orgs.models import AbstractOrganization, OrganizationSite
+from vinta_orgs.services import OrganizationService
+from vinta_orgs.state import organization_state
 
 
 class OrganizationSerializer(serializers.ModelSerializer):
@@ -21,10 +22,12 @@ class OrganizationSerializer(serializers.ModelSerializer):
         fields = ['name', 'slug']
 
     def create(self, validated_data: dict[str, Any]) -> AbstractOrganization:
-        return create_organization(user=self.context['request'].user, **validated_data)
+        service: OrganizationService[AbstractOrganization] = OrganizationService()
+        return service.create(user=self.context['request'].user, **validated_data)
 
     def update(self, instance: AbstractOrganization, validated_data: dict[str, Any]) -> AbstractOrganization:
-        return update_organization(instance, **validated_data)
+        service: OrganizationService[AbstractOrganization] = OrganizationService()
+        return service.update(instance, **validated_data)
 
 
 class OrganizationSiteSerializer(serializers.Serializer):
@@ -48,7 +51,7 @@ class OrganizationSiteSerializer(serializers.Serializer):
         return domain
 
     def create(self, validated_data: dict[str, Any]) -> OrganizationSite:
-        organization = get_current_organization()
+        organization = organization_state.get()
         domain = validated_data['domain']
 
         with transaction.atomic():

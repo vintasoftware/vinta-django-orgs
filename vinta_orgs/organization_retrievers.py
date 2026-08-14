@@ -13,12 +13,12 @@ from vinta_orgs.cache import (
 )
 from vinta_orgs.conf import get_organization_membership_model, get_organization_model
 from vinta_orgs.exceptions import OrganizationAccessDeniedError, OrganizationNotFoundError
-from vinta_orgs.helpers.memberships import resolve_organization_for_user
 from vinta_orgs.models import OrganizationSite
+from vinta_orgs.services import MembershipService
 from vinta_orgs.settings import get_setting
 
 if TYPE_CHECKING:
-    from vinta_orgs.models import AbstractOrganization
+    from vinta_orgs.models import AbstractOrganization, AbstractOrganizationMembership
 
 
 def retrieve_by_domain(request: HttpRequest) -> AbstractOrganization | None:
@@ -160,7 +160,8 @@ def retrieve_by_user_membership(request: HttpRequest) -> AbstractOrganization | 
     A caller with several memberships and nothing naming one raises
     ``AmbiguousOrganizationError`` (a ``BadRequest``, so a 400) rather than
     resolving to whichever membership is oldest. See
-    :func:`vinta_orgs.helpers.memberships.resolve_membership_for_user` for the
+    :meth:`vinta_orgs.services.MembershipService.resolve_for_user` for the
     full table.
     """
-    return resolve_organization_for_user(getattr(request, 'user', None))
+    service: MembershipService[AbstractOrganization, AbstractOrganizationMembership] = MembershipService()
+    return service.resolve_organization_for_user(getattr(request, 'user', None))

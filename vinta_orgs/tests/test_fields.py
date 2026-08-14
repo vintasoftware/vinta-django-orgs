@@ -6,11 +6,11 @@ from django.test.utils import isolate_apps
 from exampleproject.articles.models import Article, ArticleStatistics, Comment
 from vinta_orgs.exceptions import OrganizationCannotBeUpdatedError
 from vinta_orgs.fields import OrganizationSafeForeignKey, expand_safe_relation_field_names
-from vinta_orgs.helpers.organizations import (
+from vinta_orgs.tests.factories import (
     clear_current_organization,
+    create_organization,
     organization_context,
 )
-from vinta_orgs.tests.factories import create_organization
 
 
 class OrganizationSafeForeignKeyTests(TestCase):

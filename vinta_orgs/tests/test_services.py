@@ -9,7 +9,6 @@ from django.test import TestCase
 from vinta_orgs.conf import get_organization_membership_model, get_organization_model
 from vinta_orgs.models import OrganizationSite
 from vinta_orgs.services import MembershipService, OrganizationService
-from vinta_orgs.state import clear_current_organization, set_current_organization
 
 if TYPE_CHECKING:
     from vinta_orgs.models import Organization, OrganizationMembership
@@ -18,36 +17,41 @@ else:
     OrganizationMembership = get_organization_membership_model()
 
 
+class Organizations(OrganizationService[Organization]):
+    model_class = Organization
+
+
+class Memberships(MembershipService[Organization, OrganizationMembership]):
+    model_class = OrganizationMembership
+
+
 class OrganizationServiceTests(TestCase):
     def setUp(self) -> None:
-        self.service = OrganizationService(Organization)
-        clear_current_organization()
-
-    def tearDown(self) -> None:
-        clear_current_organization()
+        self.service = Organizations()
 
     def test_exposes_the_validated_model(self) -> None:
         self.assertIs(self.service.model, Organization)
 
-    def test_create_update_and_current_preserve_the_concrete_model(self) -> None:
+    def test_create_and_update_preserve_the_concrete_model(self) -> None:
         organization = self.service.create('Acme', 'acme')
         updated = self.service.update(organization, name='Acme Inc.')
-        set_current_organization(updated)
 
         self.assertIs(type(organization), Organization)
         self.assertIs(updated, organization)
         self.assertEqual(updated.name, 'Acme Inc.')
-        self.assertIs(self.service.get_current(), organization)
 
     def test_rejects_a_model_that_is_not_configured(self) -> None:
+        class InvalidOrganizations(OrganizationService[Organization]):
+            model_class = OrganizationSite  # type: ignore[assignment]
+
         with self.assertRaises(ImproperlyConfigured):
-            OrganizationService(OrganizationSite)  # type: ignore[type-var]
+            InvalidOrganizations()
 
 
 class MembershipServiceTests(TestCase):
     def setUp(self) -> None:
-        self.organizations = OrganizationService(Organization)
-        self.memberships = MembershipService(self.organizations, OrganizationMembership)
+        self.organizations = Organizations()
+        self.memberships = Memberships()
         self.organization = self.organizations.create('Acme', 'acme')
         self.user = User.objects.create_user(username='member')
 
@@ -60,8 +64,14 @@ class MembershipServiceTests(TestCase):
         self.assertIs(type(membership), OrganizationMembership)
         self.assertEqual(list(self.memberships.get_active(self.user)), [membership])
         self.assertEqual(self.memberships.resolve_for_user(self.user), membership)
-        self.assertEqual(self.organizations.resolve_for_user(self.user), self.organization)
+        self.assertEqual(self.memberships.resolve_organization_for_user(self.user), self.organization)
+
+    def test_derives_the_organization_model_from_the_membership_relation(self) -> None:
+        self.assertIs(self.memberships.organization_model, Organization)
 
     def test_rejects_a_membership_model_that_is_not_configured(self) -> None:
+        class InvalidMemberships(MembershipService[Organization, OrganizationMembership]):
+            model_class = OrganizationSite  # type: ignore[assignment]
+
         with self.assertRaises(ImproperlyConfigured):
-            MembershipService(self.organizations, OrganizationSite)  # type: ignore[type-var]
+            InvalidMemberships()

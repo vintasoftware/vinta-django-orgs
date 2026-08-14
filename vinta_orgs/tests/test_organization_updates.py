@@ -7,8 +7,7 @@ from django.test import TestCase
 
 from exampleproject.articles.models import Article
 from vinta_orgs.exceptions import OrganizationCannotBeUpdatedError
-from vinta_orgs.helpers.organizations import clear_current_organization
-from vinta_orgs.tests.factories import create_organization
+from vinta_orgs.tests.factories import clear_current_organization, create_organization
 
 
 class OrganizationUpdateTests(TestCase):

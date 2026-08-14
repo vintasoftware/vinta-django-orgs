@@ -9,7 +9,7 @@ from django.contrib.auth.models import Permission
 from django.db.models import Q, QuerySet
 
 from vinta_orgs.conf import get_organization_membership_model
-from vinta_orgs.helpers.organizations import get_current_organization
+from vinta_orgs.state import organization_state
 
 if TYPE_CHECKING:
     from django.db.models import Model
@@ -148,7 +148,7 @@ class OrganizationModelBackend(ModelBackend):
         if not user_obj.is_active or user_obj.is_anonymous or obj is not None:
             return set()
 
-        organization = get_current_organization()
+        organization = organization_state.get()
         if not organization:
             return set()
 
@@ -234,7 +234,7 @@ class OrganizationModelBackend(ModelBackend):
         if not user_obj.is_active or user_obj.is_anonymous or obj is not None:
             return set()
 
-        organization = get_current_organization()
+        organization = organization_state.get()
         if not organization:
             return set()
 

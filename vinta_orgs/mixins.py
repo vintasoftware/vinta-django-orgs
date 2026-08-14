@@ -8,10 +8,10 @@ from django.db.models.signals import class_prepared
 from django.dispatch import receiver
 
 from vinta_orgs._organization_updates import organization_update_is_allowed
+from vinta_orgs._state import get_bound_organization
 from vinta_orgs.conf import get_organization_model, organization_model_string
 from vinta_orgs.exceptions import OrganizationCannotBeUpdatedError, OrganizationNotFoundError
 from vinta_orgs.fields import expand_safe_relation_field_names, rewrite_safe_relation_kwargs
-from vinta_orgs.helpers.organizations import get_current_organization
 from vinta_orgs.managers import (
     MultipleOrganizationModelManager,
     MultipleOrganizationsUnscopedManager,
@@ -137,7 +137,7 @@ class SingleOrganizationModelMixin(models.Model):
         # ``SELECT`` on every single save, only to find out whether the field
         # had been filled in. The id answers the same question for free.
         if self.organization_id is None:
-            organization = get_current_organization() or get_default_organization()
+            organization = get_bound_organization() or get_default_organization()
 
             if organization is None:
                 raise OrganizationNotFoundError()
@@ -272,7 +272,7 @@ class MultipleOrganizationsModelMixin(models.Model):
         base_manager_name = 'original_manager'
 
     def save(self, *args: Any, **kwargs: Any) -> None:
-        organization = get_current_organization()
+        organization = get_bound_organization()
 
         if not organization:
             raise OrganizationNotFoundError()

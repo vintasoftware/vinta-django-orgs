@@ -9,12 +9,12 @@ from rest_framework.views import APIView
 
 from tests.utils import OrganizationsTestCase
 from vinta_orgs.conf import get_organization_model
-from vinta_orgs.helpers.organizations import (
+from vinta_orgs.permissions import DjangoOrganizationModelPermissions, IsOrganizationOwner
+from vinta_orgs.tests.factories import (
     clear_current_organization,
     create_organization,
     set_current_organization,
 )
-from vinta_orgs.permissions import DjangoOrganizationModelPermissions, IsOrganizationOwner
 
 # Resolved at runtime, so this module exercises whichever model
 # ``ORGANIZATION_MODEL`` names -- the concrete one by default, the test project's

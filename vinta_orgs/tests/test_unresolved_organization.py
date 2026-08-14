@@ -2,12 +2,12 @@ from django.contrib.auth.models import AnonymousUser, User
 from django.test import TestCase
 
 from vinta_orgs.exceptions import OrganizationAccessDeniedError
-from vinta_orgs.helpers.memberships import (
+from vinta_orgs.tests.factories import (
     UNRESOLVED_ORGANIZATION,
     create_membership,
+    create_organization,
     resolve_membership_for_user,
 )
-from vinta_orgs.helpers.organizations import create_organization
 
 
 class UnresolvedOrganizationTests(TestCase):

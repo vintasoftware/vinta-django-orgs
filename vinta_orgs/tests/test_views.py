@@ -8,9 +8,8 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from vinta_orgs.conf import get_organization_model
-from vinta_orgs.helpers.memberships import create_membership
-from vinta_orgs.helpers.organizations import create_default_organization_groups, set_current_organization
 from vinta_orgs.models import OrganizationSite
+from vinta_orgs.tests.factories import create_default_organization_groups, create_membership, set_current_organization
 
 # Resolved at runtime, so this module exercises whichever model
 # ``ORGANIZATION_MODEL`` names -- the concrete one by default, the test project's

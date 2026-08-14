@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from vinta_orgs.auth_backends import OrganizationModelBackend
-from vinta_orgs.helpers.organizations import get_current_organization
+from vinta_orgs.state import organization_state
 from vinta_orgs_custom_data.models import (
     OrganizationSpecificTablesPermission,
     OrganizationSpecificTablesRelationship,
@@ -55,7 +55,7 @@ class OrganizationSpecificTablesBackend(OrganizationModelBackend):
         if not user_obj.is_active or user_obj.is_anonymous or obj is not None:
             return set()
 
-        organization = get_current_organization()
+        organization = organization_state.get()
         if not organization:
             return set()
 
@@ -108,7 +108,7 @@ class OrganizationSpecificTablesBackend(OrganizationModelBackend):
         if not user_obj.is_active or user_obj.is_anonymous or obj is not None:
             return set()
 
-        organization = get_current_organization()
+        organization = organization_state.get()
         if not organization:
             return set()
 

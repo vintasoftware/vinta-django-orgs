@@ -180,9 +180,9 @@ class SharedAdapter(BaseAdapter):
 
     @contextmanager
     def bind(self, tenant):
-        from vinta_orgs.state import organization_context
+        from vinta_orgs.state import organization_state
 
-        with organization_context(self._organization(tenant)):
+        with organization_state.context(self._organization(tenant)):
             self.current = tenant
             yield
 

@@ -5,14 +5,14 @@ from model_bakery import baker
 
 from exampleproject.articles.models import Article, Comment, Tag
 from vinta_orgs.exceptions import OrganizationNotFoundError
-from vinta_orgs.helpers.organizations import (
-    clear_current_organization,
-    set_current_organization,
-)
 from vinta_orgs.managers import OrganizationScopedManagerMixin
 from vinta_orgs.mixins import get_default_organization
 from vinta_orgs.models import OrganizationMembership, OrganizationSite
-from vinta_orgs.tests.factories import create_organization
+from vinta_orgs.tests.factories import (
+    clear_current_organization,
+    create_organization,
+    set_current_organization,
+)
 
 
 class SingleOrganizationModelMixinQueryCountTests(TestCase):

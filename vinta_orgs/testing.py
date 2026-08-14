@@ -2,7 +2,7 @@
 
 Seeded groups are the recommended way to express organization roles: a data
 migration creates ``organization_owner`` (see
-:func:`vinta_orgs.helpers.organizations.create_default_organization_groups`) and
+:func:`vinta_orgs.seeding.create_default_organization_groups`) and
 whatever else the project needs, memberships are put in them, and every
 permission check reads a permission rather than a role name.
 
@@ -56,7 +56,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from vinta_orgs.helpers.organizations import create_default_organization_groups
+from vinta_orgs.seeding import create_default_organization_groups
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -79,7 +79,7 @@ def organization_group_seeders() -> list[Callable[[], list[Group]]]:
 
         SHARED_SCHEMA_ORGANIZATIONS = {
             'ORGANIZATION_GROUP_SEEDERS': [
-                'vinta_orgs.helpers.organizations.create_default_organization_groups',
+                'vinta_orgs.seeding.create_default_organization_groups',
                 'myproject.organizations.groups.create_role_groups',
             ],
         }

@@ -12,10 +12,9 @@ from django.test import TestCase
 
 from exampleproject.articles.models import Article, Comment, Tag
 from vinta_orgs.exceptions import OrganizationNotFoundError
-from vinta_orgs.helpers.organizations import clear_current_organization, set_current_organization
 from vinta_orgs.managers import unscoped_default_manager
 from vinta_orgs.models import OrganizationSite
-from vinta_orgs.tests.factories import create_organization
+from vinta_orgs.tests.factories import clear_current_organization, create_organization, set_current_organization
 
 
 class RelatedManagerIntegrationTests(TestCase):

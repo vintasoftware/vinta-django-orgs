@@ -7,14 +7,9 @@ from django.http import HttpRequest
 from django.http.response import HttpResponseBase
 from django.utils.functional import SimpleLazyObject
 
+from vinta_orgs._state import OrganizationToken
 from vinta_orgs.settings import get_setting
-from vinta_orgs.state import (
-    OrganizationToken,
-    clear_current_organization,
-    get_current_organization,
-    reset_current_organization,
-    set_current_organization,
-)
+from vinta_orgs.state import organization_state
 from vinta_orgs.utils import import_from_string
 
 if TYPE_CHECKING:
@@ -91,43 +86,19 @@ def _retrieve_organization(request: OrganizationRequest[AbstractOrganization]) -
     if hasattr(request, '_organization_before_request'):
         return request._organization_before_request
 
-    return get_current_organization()
+    return organization_state.get()
 
 
 class OrganizationMiddleware:
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponseBase]) -> None:
         self.get_response = get_response
 
-    @overload
-    @classmethod
-    def get_current_organization(cls, expected_type: type[_OrganizationT]) -> _OrganizationT | None: ...
-
-    @overload
-    @classmethod
-    def get_current_organization(cls, expected_type: None = None) -> AbstractOrganization | None: ...
-
-    @classmethod
-    def get_current_organization(
-        cls, expected_type: type[AbstractOrganization] | None = None
-    ) -> AbstractOrganization | None:
-        if expected_type is None:
-            return get_current_organization()
-        return get_current_organization(expected_type)
-
-    @classmethod
-    def set_organization(cls, organization: AbstractOrganization | str | None) -> OrganizationToken:
-        return set_current_organization(organization)
-
-    @classmethod
-    def clear_organization(cls) -> OrganizationToken:
-        return clear_current_organization()
-
     def process_request(self, request: HttpRequest) -> OrganizationRequest[AbstractOrganization]:
         stashed = cast('OrganizationRequest[AbstractOrganization]', request)
 
-        stashed._organization_before_request = get_current_organization()
+        stashed._organization_before_request = organization_state.get()
         stashed.organization = cast('AbstractOrganization', SimpleLazyObject(lambda: get_organization(request)))
-        stashed._organization_token = set_current_organization(stashed.organization)
+        stashed._organization_token = organization_state.set(stashed.organization)
 
         return stashed
 
@@ -145,7 +116,7 @@ class OrganizationMiddleware:
 
         if token is not None:
             del stashed._organization_token
-            reset_current_organization(token)
+            organization_state.reset(token)
 
     def __call__(self, request: HttpRequest) -> HttpResponseBase:
         request = self.process_request(request)

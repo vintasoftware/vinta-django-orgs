@@ -8,13 +8,13 @@ from django.test import RequestFactory, TestCase
 from django.urls import reverse
 
 from vinta_orgs.exceptions import OrganizationNotFoundError
-from vinta_orgs.helpers.organizations import (
+from vinta_orgs.middleware import OrganizationMiddleware, OrganizationRequest, get_organization
+from vinta_orgs.tests.factories import (
     clear_current_organization,
     create_organization,
     get_current_organization,
     set_current_organization,
 )
-from vinta_orgs.middleware import OrganizationMiddleware, OrganizationRequest, get_organization
 
 
 class OrganizationMiddlewareTests(TestCase):

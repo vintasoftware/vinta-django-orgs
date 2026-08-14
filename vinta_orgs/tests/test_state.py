@@ -1,18 +1,30 @@
 import threading
+from typing import TYPE_CHECKING
 
 from django.core.exceptions import ImproperlyConfigured
 from django.test import TestCase
 from django.utils.functional import SimpleLazyObject
 
-from vinta_orgs.helpers.organizations import (
+from vinta_orgs.conf import get_organization_model
+from vinta_orgs.models import AbstractOrganization, OrganizationSite
+from vinta_orgs.state import OrganizationState
+from vinta_orgs.tests.factories import (
     clear_current_organization,
+    create_organization,
     get_current_organization,
     organization_context,
     reset_current_organization,
     set_current_organization,
 )
-from vinta_orgs.models import AbstractOrganization, Organization, OrganizationSite
-from vinta_orgs.tests.factories import create_organization
+
+if TYPE_CHECKING:
+    from vinta_orgs.models import Organization
+else:
+    Organization = get_organization_model()
+
+
+class OrganizationsState(OrganizationState[Organization]):
+    model_class = Organization
 
 
 class CurrentOrganizationTests(TestCase):
@@ -32,11 +44,19 @@ class CurrentOrganizationTests(TestCase):
         set_current_organization(self.organization_1)
         self.assertEqual(get_current_organization(), self.organization_1)
 
+    def test_specialized_state_exposes_and_returns_its_concrete_model(self) -> None:
+        state = OrganizationsState()
+        state.set(self.organization_1)
+
+        self.assertIs(state.model, Organization)
+        self.assertIs(state.get(), self.organization_1)
+
     def test_an_incompatible_expected_type_is_reported(self) -> None:
-        set_current_organization(self.organization_1)
+        class InvalidOrganizationState(OrganizationState[Organization]):
+            model_class = OrganizationSite  # type: ignore[assignment]
 
         with self.assertRaises(ImproperlyConfigured):
-            get_current_organization(OrganizationSite)  # type: ignore[type-var]
+            InvalidOrganizationState()
 
     def test_set_by_slug_does_not_query_until_read(self) -> None:
         with self.assertNumQueries(0):

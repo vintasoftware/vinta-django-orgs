@@ -11,10 +11,10 @@ from rest_framework.response import Response
 from rest_framework.serializers import BaseSerializer
 
 from vinta_orgs.conf import get_organization_membership_model, get_organization_model
-from vinta_orgs.helpers.organizations import get_current_organization
 from vinta_orgs.models import AbstractOrganization, OrganizationSite
 from vinta_orgs.permissions import DjangoOrganizationModelPermissions
 from vinta_orgs.settings import get_setting
+from vinta_orgs.state import organization_state
 from vinta_orgs.utils import import_from_string
 
 if TYPE_CHECKING:
@@ -82,7 +82,7 @@ class OrganizationDetailsView(generics.RetrieveUpdateDestroyAPIView):
     def get_object(self) -> AbstractOrganization:
         # The organization the request is already bound to, so the detail route
         # needs no primary key of its own.
-        organization = get_current_organization()
+        organization = organization_state.get()
         assert organization is not None
         return organization
 
@@ -101,7 +101,7 @@ class OrganizationSiteListView(generics.ListCreateAPIView):
     def get_serializer(self, *args: Any, **kwargs: Any) -> BaseSerializer[Any]:
         if self.request.method == 'POST':
             data = kwargs.get('data', {})
-            data['organization'] = get_current_organization()
+            data['organization'] = organization_state.get()
             kwargs['data'] = data
         return super().get_serializer(*args, **kwargs)
 

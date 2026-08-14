@@ -6,7 +6,7 @@ from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models, transaction
 
-from vinta_orgs.helpers.organizations import get_current_organization
+from vinta_orgs.state import organization_state
 from vinta_orgs_custom_data.helpers.custom_tables_helpers import _get_pivot_table_class_for_data_type
 from vinta_orgs_custom_data.managers import OrganizationSpecificFieldsModelManager
 
@@ -97,7 +97,7 @@ class OrganizationSpecificFieldsModelMixin(models.Model):
             # alongside this one, so this class cannot declare it.
             organization_field = 'organization'
             if not hasattr(self, organization_field):
-                setattr(self, organization_field, get_current_organization())
+                setattr(self, organization_field, organization_state.get())
             super().save(*args, **kwargs)
             self.create_organization_specific_fields(organization_specific_fields_data)
         else:
