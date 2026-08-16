@@ -3,6 +3,49 @@
 History
 -------
 
+0.5.0 (2026-08-16)
+++++++++++++++++++++
+
+Fixed
+~~~~~
+
+* **Saving an organization-scoped row no longer reads and locks it.** The
+  immutability guard added in ``0.4.0`` answered "did the caller change the
+  organization?" with ``SELECT ... FOR UPDATE`` inside ``transaction.atomic()``,
+  on every ``save()`` of a persisted scoped row where the organization was among
+  the written fields. An instance loaded from the database already carries that
+  answer, so it is now recorded in ``from_db`` and the check is a comparison.
+
+  A save that leaves the organization alone -- the overwhelmingly common one --
+  costs exactly the ``UPDATE`` it always did: no surrounding savepoint, no extra
+  read, no row lock. A refused relocation now costs nothing at all, because the
+  instance knows the persisted value and raises without asking the database.
+
+  The guarantee is unchanged, and so is the fallback for the shapes that cannot
+  answer from memory -- an instance built in the constructor with a primary key,
+  or one loaded under ``defer('organization')`` -- which still read the row
+  under a lock.
+
+  **Why this mattered most under** ``ATOMIC_REQUESTS``. Inside a request
+  transaction, Django's ``transaction.atomic()`` is a savepoint, and PostgreSQL
+  does not release row locks when a savepoint is released -- only when the
+  transaction commits. A lock taken to validate one ``save()`` was therefore
+  held for the rest of the request, across everything else that request did,
+  outbound network calls included; two requests touching the same row serialised
+  on the slower one's whole remaining lifetime. ``ATOMIC_REQUESTS`` is also
+  commonly enabled only in production, so neither a test suite nor a development
+  environment would show any of it.
+
+  Partial saves were affected too: ``update_fields`` naming an
+  ``OrganizationSafeForeignKey`` expands to both ``<name>_fk`` and
+  ``organization``, so the write written for speed took the lock as well.
+
+* ``refresh_from_db()`` re-takes that snapshot along with the row. Django copies
+  field values onto the existing instance without running the model's own load
+  hook, so a caller who relocated a row with ``unsafe_organization_update=True``,
+  refreshed it, and saved again would otherwise have been refused for a change
+  they had already committed.
+
 0.4.0 (2026-08-14)
 ++++++++++++++++++++
 
