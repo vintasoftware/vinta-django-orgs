@@ -22,6 +22,8 @@ from vinta_orgs.managers import (
 from vinta_orgs.settings import get_setting
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from vinta_orgs.models import AbstractOrganization
 
 
@@ -47,6 +49,11 @@ def _model_pk_is_set(instance: models.Model) -> bool:
     """Django's private ``_is_pk_set()``, expressed from the public ``pk`` value."""
     pk = instance.pk
     return pk is not None and (not isinstance(pk, tuple) or all(value is not None for value in pk))
+
+
+#: "This instance does not know what the database holds." Distinct from ``None``,
+#: which is a real ``organization_id`` value on an unsaved row.
+_NO_ORGANIZATION_SNAPSHOT: Any = object()
 
 
 class SingleOrganizationModelMixin(models.Model):
@@ -116,12 +123,66 @@ class SingleOrganizationModelMixin(models.Model):
         # join rather than by this manager.
         base_manager_name = 'original_manager'
 
+    #: The ``organization_id`` this instance is known to hold *in the database*,
+    #: or :data:`_NO_ORGANIZATION_SNAPSHOT` when that is not known.
+    #:
+    #: ``save()`` has to answer one question before it writes an existing row:
+    #: has the caller changed the organization? A row loaded from the database
+    #: already carries the answer, so recording it here turns that question into
+    #: a comparison rather than a query. See ``save()`` for what the query cost.
+    _persisted_organization_id: Any = _NO_ORGANIZATION_SNAPSHOT
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         # ``article_id=5`` names the safe relation, whose column is really
         # ``article_fk_id``. Passing the instance instead (``article=article``)
         # needs no rewriting and is preferred: Django's descriptor copies the
         # target's organization across too.
         super().__init__(*args, **rewrite_safe_relation_kwargs(self.__class__, kwargs, rewrite_instances=False))
+
+    @classmethod
+    def from_db(cls, db: str | None, field_names: Any, values: Any, **kwargs: Any) -> Any:
+        """Record the organization the loaded row actually holds.
+
+        Every instance Django builds from a query passes through here, which is
+        what makes the snapshot free -- the value is already in ``values``.
+
+        ``only()`` and ``defer()`` can leave ``organization_id`` out of
+        ``field_names``; then there is nothing to record, the snapshot stays
+        unset, and ``save()`` falls back to reading the row.
+
+        ``**kwargs`` is forwarded rather than named: Django has added keyword
+        arguments to this hook across versions (``fetch_mode`` in 6.0), and an
+        override that spells the signature out breaks on the next one.
+        """
+        instance = super().from_db(db, field_names, values, **kwargs)
+
+        if 'organization_id' in field_names:
+            instance._persisted_organization_id = instance.organization_id
+
+        return instance
+
+    def refresh_from_db(
+        self,
+        using: str | None = None,
+        fields: Iterable[str] | None = None,
+        from_queryset: models.QuerySet[Any] | None = None,
+    ) -> None:
+        """Re-read the row, and re-take the snapshot with it.
+
+        ``refresh_from_db`` loads a second instance through ``from_db`` and
+        copies its *field* values onto ``self``; it copies nothing else. Without
+        this the snapshot would still describe the row as it was before the
+        refresh, and a caller who relocated a row with
+        ``unsafe_organization_update=True``, refreshed, and saved again would be
+        refused for a change they had already committed.
+
+        ``fields=[...]`` that does not name the organization reloads nothing
+        about it, so the existing snapshot is still accurate and is left alone.
+        """
+        super().refresh_from_db(using=using, fields=fields, from_queryset=from_queryset)
+
+        if fields is None or 'organization' in fields or 'organization_id' in fields:
+            self._persisted_organization_id = self.organization_id
 
     def save(self, *args: Any, **kwargs: Any) -> None:
         unsafe_organization_update = kwargs.pop('unsafe_organization_update', False)
@@ -160,24 +221,48 @@ class SingleOrganizationModelMixin(models.Model):
             and not unsafe_organization_update
             and not organization_update_is_allowed()
         ):
-            using = kwargs.get('using') or router.db_for_write(self.__class__, instance=self)
+            snapshot = self._persisted_organization_id
 
-            with transaction.atomic(using=using):
-                persisted = (
-                    self.__class__._base_manager.using(using)
-                    .select_for_update()
-                    .filter(pk=self.pk)
-                    .values_list('pk', 'organization_id')
-                    .first()
-                )
-
-                if persisted is not None and persisted[1] != self.organization_id:
+            if snapshot is not _NO_ORGANIZATION_SNAPSHOT:
+                # The instance already knows what the database holds, so the
+                # check is a comparison. Nothing is read and nothing is locked:
+                # the overwhelmingly common save leaves the organization alone
+                # and now costs exactly the ``UPDATE`` it always did.
+                if snapshot != self.organization_id:
                     raise OrganizationCannotBeUpdatedError()
+            else:
+                # No snapshot: the instance was built in memory with a primary
+                # key rather than loaded, so the persisted organization has to
+                # be read. This is the uncommon shape, and it is the only one
+                # that still pays for the lock.
+                using = kwargs.get('using') or router.db_for_write(self.__class__, instance=self)
 
-                super().save(*args, **kwargs)
-            return
+                with transaction.atomic(using=using):
+                    persisted = (
+                        self.__class__._base_manager.using(using)
+                        .select_for_update()
+                        .filter(pk=self.pk)
+                        .values_list('pk', 'organization_id')
+                        .first()
+                    )
+
+                    if persisted is not None and persisted[1] != self.organization_id:
+                        raise OrganizationCannotBeUpdatedError()
+
+                    super().save(*args, **kwargs)
+
+                self._persisted_organization_id = self.organization_id
+                return
 
         super().save(*args, **kwargs)
+
+        # Only when this save actually wrote the column. After
+        # ``save(update_fields=['title'])`` the database still holds whatever it
+        # held before, and a caller may have changed ``self.organization`` in
+        # memory without asking for it to be written -- recording that value
+        # here would quietly bless the next full save.
+        if writes_organization:
+            self._persisted_organization_id = self.organization_id
 
     async def asave(self, *args: Any, **kwargs: Any) -> None:
         return await sync_to_async(self.save)(*args, **kwargs)
